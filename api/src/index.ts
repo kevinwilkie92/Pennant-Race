@@ -8,6 +8,8 @@ import {
 } from './auth';
 import type { AppVars, Env } from './types';
 import type { DraftEvent } from './draft-room';
+import { registerLeague } from './league';
+import { loadRoster } from './roster';
 
 export { DraftRoom } from './draft-room';
 
@@ -80,20 +82,7 @@ app.get('/teams', requireAuth, async (c) => {
 
 app.get('/teams/:id/roster', requireAuth, async (c) => {
   const yr = season(c.req.query('season'));
-  const { results } = await c.env.DB.prepare(
-    `SELECT rs.slot, p.id AS playerId, p.name, p.mlb_team AS mlbTeam, p.pos, p.pos2,
-            (SELECT group_concat(position) FROM player_position pp WHERE pp.player_id = p.id AND pp.season = ?1) AS positions,
-            k.year AS keeperYear, ds.price
-       FROM roster_slot rs
-       JOIN player p ON p.id = rs.player_id
-       LEFT JOIN keeper k ON k.season = rs.season AND k.player_id = p.id
-       LEFT JOIN draft_sale ds ON ds.season = rs.season AND ds.player_id = p.id
-      WHERE rs.season = ?1 AND rs.team_id = ?2`,
-  ).bind(yr, c.req.param('id')).all<{ slot: string; positions: string | null; pos: string; pos2: string | null }>();
-  const slots = results
-    .map((r) => ({ ...r, positions: (r.positions ?? [r.pos, r.pos2].filter(Boolean).join(',')).split(',').filter(Boolean) }))
-    .sort((a, b) => slotLabelRank(a.slot) - slotLabelRank(b.slot));
-  return c.json({ season: yr, teamId: c.req.param('id'), slots });
+  return c.json({ season: yr, teamId: c.req.param('id'), slots: await loadRoster(c.env, yr, c.req.param('id') as string) });
 });
 
 app.get('/mlb-teams', requireAuth, async (c) => {
@@ -338,5 +327,7 @@ async function liveSeason(env: Env): Promise<number | null> {
   const row = await env.DB.prepare("SELECT year FROM season WHERE status = 'live' ORDER BY year DESC LIMIT 1").first<{ year: number }>();
   return row?.year ?? null;
 }
+
+registerLeague(app);
 
 export default app;

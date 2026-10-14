@@ -176,3 +176,5 @@ export function assignSlots(players: SlotInput[]): Map<number, string> {
   }
   return out;
 }
+
+export * from './season';

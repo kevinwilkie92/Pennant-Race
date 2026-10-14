@@ -51,6 +51,21 @@ export type KeeperView = {
   kept: KeeperRow[]; candidates: KeeperCandidate[];
 };
 
+export type WeekInfo = { week: number; start: string; end: string; final: boolean };
+export type MatchupRow = { week: number; home: string; away: string; homeScore: number; awayScore: number; final: boolean };
+export type StandingRow = {
+  teamId: string; rank: number; w: number; l: number; t: number; pct: number; gb: number; pf: number; pa: number;
+  streak: string; played: number; remaining: number; status: 'clinched' | 'eliminated' | 'alive'; faab: number;
+};
+export type BracketMatch = {
+  id: string; round: string; week: number; a: string | null; b: string | null;
+  aScore: number | null; bScore: number | null; winner: string | null; loser: string | null;
+};
+export type WeekSlot = RosterSlot & { byDay: Record<string, number>; weekTotal: number };
+
+// Demo/testing only: pretend "today" is this date so completed weeks can be viewed before a season starts.
+const AS_OF = process.env.EXPO_PUBLIC_AS_OF ? `&asOf=${process.env.EXPO_PUBLIC_AS_OF}` : '';
+
 export const api = {
   login: (email: string, password: string) =>
     call<{ token: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
@@ -73,6 +88,13 @@ export const api = {
     call<{ seq: number }>('/draft/sales', { method: 'POST', body: JSON.stringify(b) }),
   undo: () => call<{ ok: true }>('/draft/sales/last', { method: 'DELETE' }),
   setHat: (mlbTeam: string | null) => call<{ ok: true }>('/draft/hat', { method: 'POST', body: JSON.stringify({ mlbTeam }) }),
+  weeks: () => call<{ season: number | null; current: number | null; weeks: WeekInfo[] }>(`/weeks?x=1${AS_OF}`),
+  matchups: (week: number) => call<MatchupRow[]>(`/matchups?week=${week}${AS_OF}`),
+  standings: () => call<{ season: number | null; playoffTeams: number; rows: StandingRow[] }>(`/standings?x=1${AS_OF}`),
+  bracket: () => call<{ season: number | null; seeds: string[]; matches: BracketMatch[] }>(`/bracket?x=1${AS_OF}`),
+  teamWeek: (teamId: string, week: number) =>
+    call<{ season: number; week: number; days: string[]; slots: WeekSlot[] }>(`/teams/${teamId}/week?week=${week}`),
+  createSchedule: (startDate: string) => call<{ weeks: number }>('/schedule', { method: 'POST', body: JSON.stringify({ startDate }) }),
   teams: () => call<Team[]>('/teams'),
   roster: (teamId: string, season = 2026) =>
     call<{ season: number; teamId: string; slots: RosterSlot[] }>(`/teams/${teamId}/roster?season=${season}`),

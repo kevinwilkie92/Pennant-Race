@@ -85,14 +85,44 @@ npx wrangler pages deploy dist --project-name pennant-race
 
 For the phone apps, build with EAS (`npx eas build`) pointing at the same API URL.
 
+## Matchups, standings and playoffs
+
+The commissioner opens **League** and enters the Monday week 1 starts; that creates 26 Monday–Sunday weeks and a
+23-week round-robin. Then:
+
+- **Standings:** W-L, PCT, GB, streak, PF, PA, FAAB (tap a header to sort), playoff line after team 6, `x` clinched / `e` eliminated.
+- **Matchups:** every game for a week; tap one to open it exactly like the Matchup tab.
+- **Matchup tab:** your game for the current week, week switcher, Mon–Sun day toggle, rosters side by side
+  (top number = that day's points, bottom = week total).
+- **Bracket:** 6 teams, weeks 24–26 — seeds 1–2 get byes; QF 3v6 and 4v5; SF 1 v (4/5 winner), 2 v (3/6 winner);
+  week 26 championship and 3rd-place game. Ties go to the higher seed. Seeds lock when week 23 ends.
+
+Run `node api/scripts/league-e2e.mjs` to verify the math (it uses synthetic points and recomputes standings independently).
+To preview a finished season in the app, build with `EXPO_PUBLIC_AS_OF=2027-10-01` (demo only; the date the app treats as "today").
+
+## Stats feed — NOT connected yet
+
+Points come from the `daily_points` table (`season, date, team_id, player_id, slot, points`); everything above reads it.
+The MLB Stats API (`statsapi.mlb.com`) is the chosen source, but the cloud environment this was built in blocks that host,
+so no ingestion code exists yet and **every score is 0 until it does**. To finish it:
+
+1. Allow `statsapi.mlb.com` in the environment's network settings (or run the work on a machine that can reach it).
+2. Map our players to MLB person ids (new `player.mlb_id` column; match by name + team, review the misses by hand).
+3. A scheduled Worker (Cron Trigger) pulls each day's schedule and boxscores, turns them into stat lines, scores them with
+   `scoreHitter` / `scorePitcher` (helpers `parseInnings`, `isQualityStart`, `singles` are in `@pennant/domain`), and writes `daily_points`.
+4. Update `player_position` from games played/started so eligibility (5 starts / 10 games; SP after 3 starts, RP after 5 relief apps) follows the real season.
+
+Also needed before points can be right: daily lineups. Today a team's lineup is just its roster; a player's points count for
+the slot he sits in on that date, so lineup editing (My Team → swap/move, locking at first pitch) has to record history.
+
 ## What's built vs. next
 
-Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code,
-roster / draft-state / commissioner sale + undo endpoints with server-side bid validation,
-live draft broadcast (Durable Object WebSocket at `/draft/ws?token=…`), and the app's
-login, My Team lineup, League team list/rosters, theme switcher (dark/light/broadcast/network),
-the phone draft companion, the keepers picker + season push, and the TV draft board (hat draw, award card with bid validation, money rail, rosters, undrafted, log, undo, live sync).
+Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code, roster / draft-state /
+commissioner sale + undo endpoints with server-side bid validation, live draft broadcast (Durable Object WebSocket),
+the TV draft board, the phone draft companion, the keepers picker + season push, the schedule / standings / matchup /
+bracket engine and screens, and the app's login, My Team lineup (read-only), League, and theme switcher
+(dark/light/broadcast/network).
 
-Next, roughly in order: Matchup + daily points (needs an MLB stats feed), Players/free agents and
-waivers/trades, standings and the playoff bracket, chat, editing archived draft results, team logo upload (R2),
-Google/Apple sign-in, and a "currently nominated player" strip for the phone companion.
+Next, roughly in order: connect the stats feed (above), lineup editing with daily history, Players / free agents and
+waivers / trades, chat, editing archived draft results, team logo upload (R2), Google/Apple sign-in, and a
+"currently nominated player" strip for the phone companion.

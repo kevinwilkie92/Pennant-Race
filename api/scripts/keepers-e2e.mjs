@@ -41,6 +41,13 @@ const total = am1.slice(0, 5).reduce((a, c) => a + c.cost, 0);
 ok(amMoney.spent === total && amMoney.filled === 5 && amMoney.maxBid === 300 - total - 20, `budget reflects keepers: spent $${amMoney.spent}, max bid $${amMoney.maxBid}`);
 ok(st.sales.filter((s) => s.isKeeper).length === 5, 'keepers appear as is_keeper sales');
 
+// A live season has no frozen roster yet: the roster endpoint slots the draft sales (keepers) itself.
+const live27 = await get('/teams/AM/roster?season=2027', K);
+ok(live27.slots.length === 5 && live27.slots.every((x) => x.slot && x.keeperYear === 1 && x.price > 0), `live-season roster is built from keepers (${live27.slots.length} slotted)`);
+ok(live27.slots.some((x) => x.name === 'Kyle Bradish' && x.slot.startsWith('SP')) && live27.slots.some((x) => x.name === 'Seiya Suzuki' && x.slot.startsWith('OF')), 'keepers land in the right slots (SP, OF)');
+const wk27 = await get('/teams/AM/week?season=2027&week=1', K);
+ok(wk27.slots.length === 5, 'the weekly matchup view shows the same roster');
+
 // release one, then Year 2 flow
 ok((await call('PUT', '/keepers', { teamId: 'AM', playerId: am1[0].playerId, kept: false }, K)).s === 200, 'release a keeper');
 ok((await call('PUT', '/keepers', { teamId: 'AM', playerId: am2[0].playerId, kept: true }, K)).s === 400, 'Year-2 keeper blocked until avg salary set');
