@@ -46,16 +46,22 @@ On a physical phone, set `EXPO_PUBLIC_API_URL` to your computer's LAN address.
 Open the app's ☰ menu. **Big Board (TV)** (`/draft` on the web build) is the commissioner's screen for the TV.
 **Draft Room** (`/draft-room`) is the phone companion every manager uses.
 
-1. Commissioner (team `AM`) signs in and chooses **START NEW SEASON** — this creates the live season.
-2. **NEXT TEAM** draws an MLB team from the hat (**SHUFFLE HAT** redraws). Everyone else's screen follows instantly.
-3. Click **DRAFT** on a player, choose the winning manager, enter the bid, **AWARD**. Bids are checked on the server
+1. Commissioner (team `AM`) signs in to the Big Board and chooses **PUSH TO 2027 SEASON** (shown once the previous season is final).
+   This opens 2027 and carries rosters and eligible positions forward.
+2. **KEEPERS** tab: pick a team and click players to keep them (max 5 per team). Buckets follow the rollover rules:
+   last year's Year-2 keepers are *Not Eligible*, Year-1 keepers become *Year 2* (cost = ESPN average salary — the
+   commissioner types each one in with **SET**), everyone else is *Year 1* (last price + $5, or $5 if undrafted).
+   Owners can edit their own team's keepers; costs come off the budget and the player takes a roster slot immediately.
+   Keepers lock as soon as the first auction sale is recorded.
+3. **NEXT TEAM** draws an MLB team from the hat (**SHUFFLE HAT** redraws). Everyone else's screen follows instantly.
+4. Click **DRAFT** on a player, choose the winning manager, enter the bid, **AWARD**. Bids are checked on the server
    (≥ $1, ≤ the manager's max bid, open roster spot). **UNDO** reverts the last sale.
-4. Non-commissioners see the same board live, read-only. Tabs: Draft Board · Rosters · Undrafted · Draft Log.
-5. Phone companion (read-only, live): on-the-clock team, latest pick, your wallet (budget / max bid / spots),
+5. Non-commissioners see the same board live, read-only. Tabs: Draft Board · Rosters · Undrafted · Draft Log.
+6. Phone companion (read-only, live): on-the-clock team, latest pick, your wallet (budget / max bid / spots),
    player board with position filters and eligible positions, every manager's money, tap a manager for their roster,
    your roster, and the draft log.
 
-Keepers tab and pre-draft keeper placement come with "Push to 2027" (not built yet).
+Check the keeper and season rules end to end with `node api/scripts/keepers-e2e.mjs` (instructions at the top of the file).
 
 ## 3. Deploy to Cloudflare
 
@@ -85,8 +91,8 @@ Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth wi
 roster / draft-state / commissioner sale + undo endpoints with server-side bid validation,
 live draft broadcast (Durable Object WebSocket at `/draft/ws?token=…`), and the app's
 login, My Team lineup, League team list/rosters, theme switcher (dark/light/broadcast/network),
-the phone draft companion, and the TV draft board (hat draw, award card with bid validation, money rail, rosters, undrafted, log, undo, live sync).
+the phone draft companion, the keepers picker + season push, and the TV draft board (hat draw, award card with bid validation, money rail, rosters, undrafted, log, undo, live sync).
 
 Next, roughly in order: Matchup + daily points (needs an MLB stats feed), Players/free agents and
 waivers/trades, standings and playoff bracket, chat, the draft room UIs (TV board + phone companion),
-draft keepers tab, keeper picker and "Push to 2027",, team logo upload (R2), Google/Apple sign-in.
+Draft-room edits to archived results,, team logo upload (R2), Google/Apple sign-in.

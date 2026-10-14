@@ -5,6 +5,7 @@
 export type DraftEvent =
   | { type: 'sale'; season: number; playerId: number; teamId: string; price: number; seq: number }
   | { type: 'undo'; season: number; seq: number }
+  | { type: 'keepers'; season: number }
   | { type: 'hat'; mlbTeam: string | null }
   | { type: 'chat'; teamId: string; body: string; at: number };
 

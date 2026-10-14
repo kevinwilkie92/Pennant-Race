@@ -43,6 +43,12 @@ export function useDraft() {
       .catch((e) => setError(e.message));
   }, []);
 
+  const reloadSeasons = useCallback(async () => {
+    const s = await api.seasons();
+    setSeasons(s);
+    setSeason((s.find((x) => x.status === 'live') ?? s[0])?.year ?? null);
+  }, []);
+
   const refresh = useCallback(async () => {
     const yr = seasonRef.current;
     if (yr == null) return;
@@ -68,7 +74,7 @@ export function useDraft() {
         try {
           const ev = JSON.parse(String(m.data));
           if (ev.type === 'hat') setState((s) => (s ? { ...s, hat: ev.mlbTeam } : s));
-          else if (ev.type === 'sale' || ev.type === 'undo') { if (ev.season === seasonRef.current) refresh(); }
+          else if (ev.type === 'sale' || ev.type === 'undo' || ev.type === 'keepers') { if (ev.season === seasonRef.current) refresh(); }
         } catch { /* ignore malformed */ }
       };
       ws.onclose = () => { setLive(false); if (!closed) retry = setTimeout(connect, 2000); };
@@ -93,5 +99,5 @@ export function useDraft() {
     return { byPlayer, sale, roster };
   }, [players, state, teams]);
 
-  return { seasons, season, setSeason, status, players, mlb, teams, state, error, live, refresh, ...derived };
+  return { seasons, season, setSeason, reloadSeasons, status, players, mlb, teams, state, error, live, refresh, ...derived };
 }

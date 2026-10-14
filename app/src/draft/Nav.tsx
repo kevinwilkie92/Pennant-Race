@@ -3,11 +3,12 @@ import { FONT } from '../theme';
 import type { SeasonRow } from '../api';
 import { D } from './tokens';
 
-export type Tab = 'board' | 'rosters' | 'undrafted' | 'log';
+export type Tab = 'board' | 'rosters' | 'undrafted' | 'keepers' | 'log';
 const TABS: { key: Tab; label: string }[] = [
   { key: 'board', label: 'DRAFT BOARD' },
   { key: 'rosters', label: 'ROSTERS' },
   { key: 'undrafted', label: 'UNDRAFTED' },
+  { key: 'keepers', label: 'KEEPERS' },
   { key: 'log', label: 'DRAFT LOG' },
 ];
 
@@ -15,7 +16,7 @@ type Props = {
   tab: Tab; setTab: (t: Tab) => void;
   seasons: SeasonRow[]; season: number | null; setSeason: (y: number) => void;
   drafted: number; total: number; live: boolean; commissioner: boolean; isLive: boolean;
-  onUndo: () => void; onBack: () => void; onNewSeason: () => void;
+  onUndo: () => void; onBack: () => void; onPush: () => void; pushYear: number | null;
 };
 
 export function Nav(p: Props) {
@@ -47,9 +48,9 @@ export function Nav(p: Props) {
           </Pressable>
         ))}
       </View>
-      {p.commissioner && !p.seasons.some((s) => s.status === 'live') && (
-        <Pressable onPress={p.onNewSeason} style={{ paddingHorizontal: 12, paddingVertical: 7, borderRadius: 6, borderWidth: 1, borderColor: D.line }}>
-          <Text style={{ color: D.dim, fontFamily: FONT.bodyBold, fontSize: 12, letterSpacing: 1 }}>START NEW SEASON</Text>
+      {p.commissioner && p.pushYear != null && (
+        <Pressable onPress={p.onPush} style={{ paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: D.gold }}>
+          <Text style={{ color: D.gold, fontFamily: FONT.bodyBold, fontSize: 12, letterSpacing: 1 }}>PUSH TO {p.pushYear} SEASON</Text>
         </Pressable>
       )}
       {p.commissioner && p.isLive && (

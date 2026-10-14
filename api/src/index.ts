@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { maxBid, validateBid, ROSTER_SIZE, slotLabelRank } from '@pennant/domain';
+import {
+  MAX_KEEPERS, assignSlots, keeperCost, keeperTier, maxBid, validateBid, ROSTER_SIZE, slotLabelRank,
+} from '@pennant/domain';
 import {
   bearer, createSession, destroySession, hashPassword, requireAuth, requireCommissioner, verifyPassword, userForToken,
 } from './auth';
@@ -127,17 +129,146 @@ app.get('/seasons', requireAuth, async (c) => {
   return c.json(results);
 });
 
-// Starts a new live season (the draft). Keeper rollover / "Push to 2027" builds on this later.
-app.post('/seasons', requireAuth, requireCommissioner, async (c) => {
-  const { year } = await c.req.json<{ year: number }>();
-  if (!Number.isInteger(year) || year < 2026 || year > 2100) return c.json({ error: 'Invalid year' }, 400);
-  if (await liveSeason(c.env)) return c.json({ error: 'A season is already live' }, 409);
-  try {
-    await c.env.DB.prepare("INSERT INTO season (year, status) VALUES (?, 'live')").bind(year).run();
-  } catch {
-    return c.json({ error: 'Season already exists' }, 409);
+// "Push to next season": archives the live season (freezing its rosters), then opens the next one with
+// last season's eligible positions carried over. Rosters are materialised from the draft sales; in-season
+// adds/drops will write roster_slot directly once transactions exist.
+app.post('/seasons/push', requireAuth, requireCommissioner, async (c) => {
+  const live = await liveSeason(c.env);
+  const latest = await c.env.DB.prepare('SELECT MAX(year) AS y FROM season').first<{ y: number | null }>();
+  if (latest?.y == null) return c.json({ error: 'No seasons to push from' }, 409);
+  const next = latest.y + 1;
+  const stmts: D1PreparedStatement[] = [];
+  if (live != null) {
+    const { results: sales } = await c.env.DB.prepare(
+      `SELECT ds.team_id AS teamId, ds.player_id AS playerId, ds.seq,
+              COALESCE((SELECT group_concat(position) FROM player_position pp WHERE pp.player_id = ds.player_id AND pp.season = ds.season),
+                       p.pos || COALESCE(',' || p.pos2, '')) AS positions
+         FROM draft_sale ds JOIN player p ON p.id = ds.player_id
+        WHERE ds.season = ? AND NOT EXISTS (SELECT 1 FROM roster_slot rs WHERE rs.season = ds.season AND rs.player_id = ds.player_id)
+        ORDER BY ds.seq`,
+    ).bind(live).all<{ teamId: string; playerId: number; seq: number; positions: string }>();
+    const used = await c.env.DB.prepare('SELECT team_id AS teamId, slot FROM roster_slot WHERE season = ?').bind(live).all<{ teamId: string; slot: string }>();
+    const byTeam = new Map<string, typeof sales>();
+    for (const r of sales) byTeam.set(r.teamId, [...(byTeam.get(r.teamId) ?? []), r]);
+    for (const [teamId, rows] of byTeam) {
+      const taken = used.results.filter((u) => u.teamId === teamId).map((u, i) => ({ playerId: -1 - i, positions: [] as string[], slot: u.slot }));
+      const slots = assignSlots([...taken, ...rows.map((r) => ({ playerId: r.playerId, positions: r.positions.split(','), slot: null }))]);
+      for (const r of rows) {
+        const slot = slots.get(r.playerId);
+        if (slot) stmts.push(c.env.DB.prepare('INSERT INTO roster_slot (season, team_id, player_id, slot) VALUES (?, ?, ?, ?)').bind(live, teamId, r.playerId, slot));
+      }
+    }
+    stmts.push(c.env.DB.prepare("UPDATE season SET status = 'archived' WHERE year = ?").bind(live));
   }
-  return c.json({ year }, 201);
+  stmts.push(c.env.DB.prepare("INSERT INTO season (year, status) VALUES (?, 'live')").bind(next));
+  stmts.push(c.env.DB.prepare('INSERT OR IGNORE INTO player_position (player_id, season, position) SELECT player_id, ?, position FROM player_position WHERE season = ?').bind(next, latest.y));
+  await c.env.DB.batch(stmts);
+  await broadcast(c.env, { type: 'keepers', season: next });
+  return c.json({ year: next }, 201);
+});
+
+// ------------------------------------------------------------------ keepers
+type Cand = {
+  teamId: string; playerId: number; name: string; mlbTeam: string | null; pos: string; pos2: string | null;
+  yearsKept: number | null; lastPrice: number | null; avgSalary: number | null;
+};
+
+async function keeperView(env: Env, yr: number) {
+  const status = await env.DB.prepare('SELECT status FROM season WHERE year = ?').bind(yr).first<{ status: string }>();
+  const { results: kept } = await env.DB.prepare(
+    `SELECT k.team_id AS teamId, k.player_id AS playerId, p.name, p.mlb_team AS mlbTeam, p.pos, k.year, k.cost
+       FROM keeper k JOIN player p ON p.id = k.player_id WHERE k.season = ? ORDER BY k.cost DESC`,
+  ).bind(yr).all<{ teamId: string; playerId: number }>();
+  let candidates: ReturnType<typeof mapCand>[] = [];
+  if (status?.status === 'live') {
+    const prior = await env.DB.prepare('SELECT MAX(year) AS y FROM season WHERE year < ?').bind(yr).first<{ y: number | null }>();
+    if (prior?.y != null) {
+      const { results } = await env.DB.prepare(
+        `SELECT rs.team_id AS teamId, p.id AS playerId, p.name, p.mlb_team AS mlbTeam, p.pos, p.pos2,
+                k.year AS yearsKept, ds.price AS lastPrice, pv.avg_salary AS avgSalary
+           FROM roster_slot rs
+           JOIN player p ON p.id = rs.player_id
+           LEFT JOIN keeper k ON k.season = rs.season AND k.player_id = p.id
+           LEFT JOIN draft_sale ds ON ds.season = rs.season AND ds.player_id = p.id
+           LEFT JOIN player_value pv ON pv.season = ?1 AND pv.player_id = p.id
+          WHERE rs.season = ?2`,
+      ).bind(yr, prior.y).all<Cand>();
+      candidates = results.map(mapCand);
+    }
+  }
+  const keptIds = new Set(kept.map((k) => k.playerId));
+  const auction = status?.status === 'live'
+    ? !!(await env.DB.prepare('SELECT 1 FROM draft_sale WHERE season = ? AND is_keeper = 0 LIMIT 1').bind(yr).first())
+    : true;
+  return {
+    season: yr, status: status?.status ?? null, max: MAX_KEEPERS, locked: auction, kept,
+    candidates: candidates.map((c) => ({ ...c, kept: keptIds.has(c.playerId) })),
+  };
+}
+
+// Rollover rules live in @pennant/domain: Y2 -> not eligible, Y1 -> Year 2, everyone else -> Year 1.
+function mapCand(c: Cand) {
+  const history = { yearsKept: (c.yearsKept ?? 0) as 0 | 1 | 2, lastPrice: c.lastPrice, avgSalary: c.avgSalary };
+  return {
+    teamId: c.teamId, playerId: c.playerId, name: c.name, mlbTeam: c.mlbTeam, pos: c.pos,
+    positions: [c.pos, c.pos2].filter(Boolean) as string[],
+    tier: keeperTier(history), cost: keeperCost(history), lastPrice: c.lastPrice, avgSalary: c.avgSalary,
+  };
+}
+
+app.get('/keepers', requireAuth, async (c) => {
+  const yr = c.req.query('season') ? season(c.req.query('season')) : (await liveSeason(c.env)) ?? DEFAULT_SEASON;
+  return c.json(await keeperView(c.env, yr));
+});
+
+app.put('/keepers', requireAuth, async (c) => {
+  const u = c.get('user');
+  const { teamId, playerId, kept } = await c.req.json<{ teamId: string; playerId: number; kept: boolean }>();
+  if (!u.isCommissioner && u.teamId !== teamId) return c.json({ error: 'You can only edit your own keepers' }, 403);
+  const yr = await liveSeason(c.env);
+  if (yr == null) return c.json({ error: 'No live season' }, 409);
+  const view = await keeperView(c.env, yr);
+  if (view.locked) return c.json({ error: 'The auction has started; keepers are locked' }, 409);
+
+  if (!kept) {
+    await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM keeper WHERE season = ? AND team_id = ? AND player_id = ?').bind(yr, teamId, playerId),
+      c.env.DB.prepare('DELETE FROM draft_sale WHERE season = ? AND team_id = ? AND player_id = ? AND is_keeper = 1').bind(yr, teamId, playerId),
+    ]);
+  } else {
+    const cand = view.candidates.find((x) => x.teamId === teamId && x.playerId === playerId);
+    if (!cand) return c.json({ error: 'Player was not on this team at the end of last season' }, 400);
+    if (cand.tier === 0) return c.json({ error: 'Kept two years running; he returns to the draft' }, 400);
+    if (cand.cost == null) return c.json({ error: 'Set the ESPN average salary first' }, 400);
+    if (cand.kept) return c.json({ ok: true });
+    const mine = view.kept.filter((k) => k.teamId === teamId).length;
+    if (mine >= MAX_KEEPERS) return c.json({ error: `At most ${MAX_KEEPERS} keepers per team` }, 400);
+    const money = await c.env.DB.prepare('SELECT COALESCE(SUM(price), 0) AS spent, COUNT(*) AS filled FROM draft_sale WHERE season = ? AND team_id = ?')
+      .bind(yr, teamId).first<{ spent: number; filled: number }>();
+    const check = validateBid(cand.cost, money?.spent ?? 0, money?.filled ?? 0);
+    if (!check.ok) return c.json({ error: check.reason }, 400);
+    const seq = ((await c.env.DB.prepare('SELECT COALESCE(MAX(seq), 0) AS s FROM draft_sale WHERE season = ?').bind(yr).first<{ s: number }>())?.s ?? 0) + 1;
+    await c.env.DB.batch([
+      c.env.DB.prepare('INSERT INTO keeper (season, team_id, player_id, year, cost) VALUES (?, ?, ?, ?, ?)').bind(yr, teamId, playerId, cand.tier, cand.cost),
+      c.env.DB.prepare('INSERT INTO draft_sale (season, player_id, team_id, price, seq, is_keeper) VALUES (?, ?, ?, ?, ?, 1)').bind(yr, playerId, teamId, cand.cost, seq),
+    ]);
+  }
+  await broadcast(c.env, { type: 'keepers', season: yr });
+  return c.json({ ok: true });
+});
+
+app.put('/player-values', requireAuth, requireCommissioner, async (c) => {
+  const { playerId, avgSalary } = await c.req.json<{ playerId: number; avgSalary: number }>();
+  const yr = await liveSeason(c.env);
+  if (yr == null) return c.json({ error: 'No live season' }, 409);
+  if (!Number.isFinite(avgSalary) || avgSalary < 0) return c.json({ error: 'Invalid salary' }, 400);
+  const view = await keeperView(c.env, yr);
+  const cand = view.candidates.find((x) => x.playerId === playerId);
+  if (cand?.kept) return c.json({ error: 'Un-keep him before changing his cost' }, 409);
+  await c.env.DB.prepare('INSERT INTO player_value (season, player_id, avg_salary) VALUES (?, ?, ?) ON CONFLICT(season, player_id) DO UPDATE SET avg_salary = excluded.avg_salary')
+    .bind(yr, playerId, avgSalary).run();
+  await broadcast(c.env, { type: 'keepers', season: yr });
+  return c.json({ ok: true });
 });
 
 // Player pool for the draft board. Eligible positions come from player_position for that season,

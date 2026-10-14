@@ -7,6 +7,7 @@ import { Award } from '../src/draft/Award';
 import { Board } from '../src/draft/Board';
 import { Money } from '../src/draft/Money';
 import { Nav, type Tab } from '../src/draft/Nav';
+import { Keepers } from '../src/draft/Keepers';
 import { Log, Rosters, Undrafted } from '../src/draft/Tables';
 import { D } from '../src/draft/tokens';
 import { useDraft } from '../src/draft/useDraft';
@@ -16,10 +17,10 @@ export default function Draft() {
   const { ready, me } = useAuth();
   if (!ready) return null;                       // wait for the saved login before calling the API
   if (!me) return <Redirect href="/login" />;
-  return <DraftRoom commissioner={me.user.isCommissioner} />;
+  return <DraftRoom commissioner={me.user.isCommissioner} myTeamId={me.user.teamId} />;
 }
 
-function DraftRoom({ commissioner }: { commissioner: boolean }) {
+function DraftRoom({ commissioner, myTeamId }: { commissioner: boolean; myTeamId: string | null }) {
   const router = useRouter();
   const d = useDraft();
   const [tab, setTab] = useState<Tab>('board');
@@ -43,7 +44,12 @@ function DraftRoom({ commissioner }: { commissioner: boolean }) {
         tab={tab} setTab={setTab} seasons={d.seasons} season={d.season} setSeason={(y) => { d.setSeason(y); setBrowse(null); }}
         drafted={d.state?.sales.length ?? 0} total={d.teams.length * 26} live={d.live} commissioner={commissioner} isLive={isLive}
         onUndo={() => guard(() => api.undo().then(d.refresh))} onBack={() => router.back()}
-        onNewSeason={() => guard(async () => { await api.startSeason(new Date().getFullYear() + (d.seasons.some((s) => s.year === new Date().getFullYear()) ? 1 : 0)); location.reload(); })}
+        pushYear={d.seasons.some((s) => s.status === 'live') || d.seasons.length === 0 ? null : Math.max(...d.seasons.map((s) => s.year)) + 1}
+        onPush={() => {
+          const y = Math.max(...d.seasons.map((s) => s.year)) + 1;
+          const ok = Platform.OS === 'web' ? globalThis.confirm?.(`Push to ${y}? This opens the ${y} season and its keeper window.`) : true;
+          if (ok) guard(async () => { await api.pushSeason(); await d.reloadSeasons(); setBrowse(null); setTab('keepers'); });
+        }}
       />
       {d.error ? <View style={{ padding: 20 }}><Err m={d.error} /></View> : null}
       <View style={{ flex: 1, flexDirection: 'row' }}>
@@ -54,6 +60,10 @@ function DraftRoom({ commissioner }: { commissioner: boolean }) {
           )}
           {tab === 'rosters' && <Rosters teams={d.teams} managers={d.state?.managers ?? []} roster={d.roster} highlight={focus} />}
           {tab === 'undrafted' && <Undrafted players={d.players} sale={d.sale} />}
+          {tab === 'keepers' && d.season != null && (
+            <Keepers season={d.season} teams={d.teams} managers={d.state?.managers ?? []} version={d.state}
+              commissioner={commissioner} myTeamId={myTeamId} onError={say} />
+          )}
           {tab === 'log' && <Log sales={d.state?.sales ?? []} teams={d.teams} />}
         </View>
         {tab === 'board' && (

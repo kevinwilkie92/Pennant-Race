@@ -41,6 +41,16 @@ export type DraftPlayer = { id: number; name: string; mlbTeam: string | null; po
 export type MlbTeam = { abbr: string; name: string; logo: string | null; color: string | null; color2: string | null };
 export type SeasonRow = { year: number; status: 'live' | 'archived' };
 
+export type KeeperCandidate = {
+  teamId: string; playerId: number; name: string; mlbTeam: string | null; pos: string; positions: string[];
+  tier: 0 | 1 | 2; cost: number | null; lastPrice: number | null; avgSalary: number | null; kept: boolean;
+};
+export type KeeperRow = { teamId: string; playerId: number; name: string; mlbTeam: string | null; pos: string; year: 1 | 2; cost: number };
+export type KeeperView = {
+  season: number; status: 'live' | 'archived' | null; max: number; locked: boolean;
+  kept: KeeperRow[]; candidates: KeeperCandidate[];
+};
+
 export const api = {
   login: (email: string, password: string) =>
     call<{ token: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
@@ -50,7 +60,12 @@ export const api = {
   me: () => call<Me>('/me'),
   publicTeams: () => call<{ id: string; name: string; owner: string; claimed: number }[]>('/public/teams'),
   seasons: () => call<SeasonRow[]>('/seasons'),
-  startSeason: (year: number) => call<{ year: number }>('/seasons', { method: 'POST', body: JSON.stringify({ year }) }),
+  pushSeason: () => call<{ year: number }>('/seasons/push', { method: 'POST' }),
+  keepers: (season: number) => call<KeeperView>(`/keepers?season=${season}`),
+  setKeeper: (b: { teamId: string; playerId: number; kept: boolean }) =>
+    call<{ ok: true }>('/keepers', { method: 'PUT', body: JSON.stringify(b) }),
+  setValue: (playerId: number, avgSalary: number) =>
+    call<{ ok: true }>('/player-values', { method: 'PUT', body: JSON.stringify({ playerId, avgSalary }) }),
   mlbTeams: () => call<MlbTeam[]>('/mlb-teams'),
   draftPlayers: (season: number) => call<DraftPlayer[]>(`/draft/players?season=${season}`),
   draftState: (season: number) => call<DraftState>(`/draft/state?season=${season}`),
