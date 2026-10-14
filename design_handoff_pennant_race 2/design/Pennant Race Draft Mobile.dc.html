@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:ital,wght@0,600;0,700;0,800;0,900;1,700;1,800;1,900&family=Barlow:ital,wght@0,400;0,500;0,600;0,700;0,800&family=Barlow+Semi+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="./draft-data-2026.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased;}
+  html,body{height:100%;}
+  body{font-family:'Barlow',system-ui,sans-serif;background:#05101f;}
+  .pr-scroll::-webkit-scrollbar{width:0;height:0;display:none;}
+  .pr-scroll{scrollbar-width:none;-ms-overflow-style:none;}
+  @keyframes prFade{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+  @keyframes prSlide{from{transform:translateY(100%);}to{transform:translateY(0);}}
+</style>
+</helmet>
+
+<div style="min-height:100vh;width:100%;display:flex;align-items:center;justify-content:center;padding:32px 16px;background:radial-gradient(120% 90% at 50% 0%, #0e2647 0%, #081830 45%, #04101f 100%);font-family:'Barlow',sans-serif;">
+  <div style="width:412px;flex:none;border-radius:56px;padding:13px;background:linear-gradient(155deg,#3a3f49,#0c0e12 40%,#1a1d24);box-shadow:0 50px 110px -30px rgba(0,0,0,.85), 0 0 0 2px rgba(255,255,255,.04) inset;">
+    <div style="position:relative;width:386px;height:836px;border-radius:46px;overflow:hidden;background:#0a1a30;box-shadow:0 0 0 2px #000;">
+      <div style="--card:rgba(255,255,255,.045);--line:rgba(255,255,255,.09);--red:#e22634;--dim:#90a4bf;--dim2:#5f7d9c;--green:#33b06a;--gold:#e0a52b;position:absolute;inset:0;display:flex;flex-direction:column;background:linear-gradient(180deg,#10294a 0%,#0a1a30 42%,#071525 100%);color:#fff;font-family:'Barlow',sans-serif;">
+
+        <!-- status bar -->
+        <div style="height:44px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 26px 6px;">
+          <div style="font-weight:700;font-size:15px;">9:41</div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <svg width="18" height="12" viewBox="0 0 18 12" fill="#fff"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="5" y="4.5" width="3" height="7.5" rx="1"/><rect x="10" y="2" width="3" height="10" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg>
+            <svg width="26" height="13" viewBox="0 0 26 13" fill="none"><rect x="0.5" y="0.5" width="21" height="12" rx="3.2" stroke="#fff" stroke-opacity=".5"/><rect x="2" y="2" width="17" height="9" rx="2" fill="#fff"/><rect x="23" y="4" width="2" height="5" rx="1" fill="#fff" fill-opacity=".5"/></svg>
+          </div>
+        </div>
+
+        <!-- header -->
+        <div style="flex:none;display:flex;align-items:center;gap:10px;padding:6px 16px 10px;border-bottom:1px solid var(--line);">
+          <a href="Pennant Race.dc.html" style="display:flex;padding:4px;color:#fff;text-decoration:none;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg></a>
+          <div style="flex:1;">
+            <div style="font-family:'Saira Condensed';font-style:italic;font-weight:900;font-size:19px;letter-spacing:.3px;">DRAFT ROOM</div>
+            <div style="font-size:10.5px;color:var(--dim);">Carrollton All Stars · {{ yearLabel }}</div>
+          </div>
+          <span style="font-family:'Saira Condensed';font-weight:800;font-size:11px;letter-spacing:1px;color:#fff;background:{{ liveBg }};padding:4px 10px;border-radius:7px;">{{ liveTag }}</span>
+        </div>
+
+        <!-- on the clock banner -->
+        <div style="flex:none;display:flex;align-items:center;gap:12px;padding:12px 16px;background:linear-gradient(120deg,{{ clock.bg }} 0%,rgba(10,26,48,.2) 100%);border-bottom:1px solid var(--line);">
+          <sc-if value="{{ clock.hasLogo }}" hint-placeholder-val="{{ false }}">
+            <div style="width:44px;height:44px;border-radius:50%;background:radial-gradient(circle, rgba(255,255,255,.95) 0%, rgba(255,255,255,.75) 55%, rgba(255,255,255,0) 72%);display:flex;align-items:center;justify-content:center;flex:none;">
+              <div style="width:34px;height:34px;background-image:url('{{ clock.logo }}');background-size:contain;background-repeat:no-repeat;background-position:center;"></div>
+            </div>
+          </sc-if>
+          <div style="flex:1;min-width:0;">
+            <div style="font-family:'Saira Condensed';font-weight:700;font-size:10px;letter-spacing:1.2px;color:rgba(255,255,255,.75);">ON THE CLOCK</div>
+            <div style="font-family:'Saira Condensed';font-style:italic;font-weight:900;font-size:21px;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ clock.name }}</div>
+          </div>
+          <div style="text-align:right;flex:none;">
+            <div style="font-family:'Barlow Semi Condensed';font-weight:700;font-size:17px;line-height:1;">{{ clock.left }}</div>
+            <div style="font-size:9.5px;color:rgba(255,255,255,.7);">LEFT ON BOARD</div>
+          </div>
+        </div>
+
+        <!-- nomination strip -->
+        <sc-if value="{{ nomOn }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:none;display:flex;align-items:center;gap:10px;padding:9px 16px;background:rgba(51,176,106,.12);border-bottom:1px solid rgba(51,176,106,.25);">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--green);flex:none;"></span>
+            <div style="flex:1;min-width:0;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><b>{{ nomName }}</b> <span style="color:var(--dim);">{{ nomPos }}</span></div>
+            <div style="font-family:'Barlow Semi Condensed';font-weight:700;font-size:16px;color:var(--green);flex:none;">{{ nomBid }}</div>
+          </div>
+        </sc-if>
+
+        <!-- wallet card -->
+        <div style="flex:none;display:flex;align-items:stretch;margin:12px 16px 0;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;">
+          <div style="flex:1.4;display:flex;align-items:center;gap:9px;padding:11px 12px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:{{ myColor }};display:flex;align-items:center;justify-content:center;flex:none;"><span style="font-family:'Saira Condensed';font-weight:800;font-style:italic;font-size:12px;">{{ myAbbr }}</span></div>
+            <div style="min-width:0;">
+              <div style="font-weight:700;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ myName }}</div>
+              <div style="font-size:10px;color:var(--dim);">Your wallet</div>
+            </div>
+          </div>
+          <div style="width:1px;background:var(--line);"></div>
+          <div style="flex:1;padding:10px 6px;text-align:center;">
+            <div style="font-family:'Barlow Semi Condensed';font-weight:700;font-size:19px;color:var(--green);line-height:1.1;">{{ myBudget }}</div>
+            <div style="font-size:9px;color:var(--dim);letter-spacing:.5px;">BUDGET</div>
+          </div>
+          <div style="width:1px;background:var(--line);"></div>
+          <div style="flex:1;padding:10px 6px;text-align:center;">
+            <div style="font-family:'Barlow Semi Condensed';font-weight:700;font-size:19px;color:var(--gold);line-height:1.1;">{{ myMax }}</div>
+            <div style="font-size:9px;color:var(--dim);letter-spacing:.5px;">MAX BID</div>
+          </div>
+          <div style="width:1px;background:var(--line);"></div>
+          <div style="flex:1;padding:10px 6px;text-align:center;">
+            <div style="font-family:'Barlow Semi Condensed';font-weight:700;font-size:19px;line-height:1.1;">{{ mySpots }}</div>
+            <div style="font-size:9px;color:var(--dim);letter-spacing:.5px;">SPOTS</div>
+          </div>
+        </div>
+
+        <!-- content -->
+        <div class="pr-scroll" style="flex:1;overflow-y:auto;min-height:0;padding-bottom:8px;">
+
+          <!-- BOARD -->
+          <sc-if value="{{ tBoard }}" hint-placeholder-val="{{ true }}">
+            <div style="animation:prFade .3s ease;">
+              <div style="display:flex;gap:6px;padding:12px 16px 4px;">
+                <sc-for list="{{ posChips }}" as="c" hint-placeholder-count="5">
+                  <button onClick="{{ c.onTap }}" style="flex:1;padding:7px 0;border-radius:9px;border:1px solid {{ c.border }};background:{{ c.bg }};color:{{ c.fg }};font-family:'Saira Condensed';font-weight:700;font-size:12px;letter-spacing:.5px;cursor:pointer;">{{ c.label }}</button>
+                </sc-for>
+              </div>
+              <div style="padding:8px 16px 6px;font-family:'Saira Condensed';font-weight:700;font-size:11px;letter-spacing:1px;color:var(--dim);">{{ clock.abbr }} PLAYER BOARD</div>
+              <sc-for list="{{ boardRows }}" as="p" hint-placeholder-count="10">
+                <div onClick="{{ p.onTap }}" style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-top:1px solid var(--line);opacity:{{ p.rowOpacity }};cursor:pointer;">
+                  <span style="width:44px;font-family:'Saira Condensed';font-weight:800;font-size:12px;color:{{ p.posColor }};flex:none;">{{ p.posDisp }}</span>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ p.nameColor }};">{{ p.name }}</div>
+                  </div>
+                  <sc-if value="{{ p.isDrafted }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;align-items:center;gap:7px;flex:none;">
+                      <span style="font-size:11px;color:var(--dim);">{{ p.wonBy }}</span>
+                      <span style="font-family:'Barlow Semi Condensed';font-weight:700;font-size:14px;color:{{ p.wonColor }};">{{ p.price }}</span>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ p.isOpen }}" hint-placeholder-val="{{ true }}">
+                    <span style="font-size:10.5px;color:var(--dim2);flex:none;">available</span>
+                  </sc-if>
+                </div>
+              </sc-for>
+              <sc-if value="{{ boardEmpty }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:30px 16px;text-align:center;color:var(--dim2);font-size:13px;">No players match this filter.</div>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <!-- MANAGERS -->
+          <sc-if value="{{ tMgrs }}" hint-placeholder-val="{{ false }}">
+            <div style="animation:prFade .3s ease;">
+              <div style="display:flex;align-items:center;padding:12px 16px 6px;font-family:'Saira Condensed';font-weight:700;font-size:10.5px;letter-spacing:.8px;color:var(--dim);">
+                <span style="flex:1;">MANAGER</span><span style="width:56px;text-align:right;">BUDGET</span><span style="width:52px;text-align:right;">MAX</span><span style="width:48px;text-align:right;">SPOTS</span>
+              </div>
+              <sc-for list="{{ mgrRows }}" as="m" hint-placeholder-count="12">
+                <div onClick="{{ m.onTap }}" style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-top:1px solid var(--line);background:{{ m.bg }};cursor:pointer;">
+                  <div style="width:28px;height:28px;border-radius:50%;background:{{ m.color }};display:flex;align-items:center;justify-content:center;flex:none;"><span style="font-family:'Saira Condensed';font-weight:800;font-style:italic;font-size:11px;">{{ m.abbr }}</span></div>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ m.name }}</div>
+                    <div style="font-size:10px;color:var(--dim2);">{{ m.first }}</div>
+                  </div>
+                  <span style="width:56px;text-align:right;font-family:'Barlow Semi Condensed';font-weight:700;font-size:14.5px;color:var(--green);">{{ m.budget }}</span>
+                  <span style="width:52px;text-align:right;font-family:'Barlow Semi Condensed';font-weight:700;font-size:14.5px;color:var(--gold);">{{ m.max }}</span>
+                  <span style="width:48px;text-align:right;font-family:'Barlow Semi Condensed';font-weight:700;font-size:14.5px;">{{ m.spots }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <!-- MY ROSTER -->
+          <sc-if value="{{ tRoster }}" hint-placeholder-val="{{ false }}">
+            <div style="animation:prFade .3s ease;">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 6px;">
+                <span style="font-family:'Saira Condensed';font-weight:700;font-size:11px;letter-spacing:1px;color:var(--dim);">MY ROSTER · {{ myFilled }} / {{ slotCount }}</span>
+                <span style="font-size:11px;color:var(--dim2);">Spent {{ mySpent }}</span>
+              </div>
+              <sc-for list="{{ mySlots }}" as="r" hint-placeholder-count="14">
+                <div onClick="{{ r.onTap }}" style="display:flex;align-items:center;gap:10px;padding:8px 16px;border-top:1px solid var(--line);cursor:{{ r.cursor }};">
+                  <span style="width:38px;font-family:'Saira Condensed';font-weight:800;font-size:12px;color:{{ r.labelColor }};flex:none;">{{ r.label }}</span>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;font-size:13px;color:{{ r.nameColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.name }}</div>
+                    <sc-if value="{{ r.filled }}" hint-placeholder-val="{{ false }}"><div style="font-size:10px;color:var(--dim2);">{{ r.sub }}</div></sc-if>
+                  </div>
+                  <span style="font-family:'Barlow Semi Condensed';font-weight:700;font-size:14px;color:{{ r.costColor }};flex:none;">{{ r.cost }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <!-- LOG -->
+          <sc-if value="{{ tLog }}" hint-placeholder-val="{{ false }}">
+            <div style="animation:prFade .3s ease;">
+              <div style="padding:12px 16px 6px;font-family:'Saira Condensed';font-weight:700;font-size:11px;letter-spacing:1px;color:var(--dim);">DRAFT LOG · {{ logCount }} PICKS</div>
+              <sc-for list="{{ logRows }}" as="e" hint-placeholder-count="12">
+                <div onClick="{{ e.onTap }}" style="display:flex;align-items:center;gap:10px;padding:9px 16px;border-top:1px solid var(--line);cursor:pointer;">
+                  <span style="width:26px;font-family:'Barlow Semi Condensed';font-weight:700;font-size:13px;color:var(--dim2);flex:none;">{{ e.num }}</span>
+                  <span style="width:28px;font-family:'Saira Condensed';font-weight:800;font-size:11.5px;color:{{ e.posColor }};flex:none;">{{ e.pos }}</span>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ e.name }}</div>
+                    <div style="font-size:10.5px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ e.mgr }}</div>
+                  </div>
+                  <span style="font-family:'Barlow Semi Condensed';font-weight:700;font-size:15px;color:var(--gold);flex:none;">{{ e.price }}</span>
+                </div>
+              </sc-for>
+              <sc-if value="{{ logEmpty }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:30px 16px;text-align:center;color:var(--dim2);font-size:13px;">No picks yet — the auction hasn't started.</div>
+              </sc-if>
+            </div>
+          </sc-if>
+        </div>
+
+        <!-- ===== MANAGER ROSTER SHEET ===== -->
+        <sc-if value="{{ mgrOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;z-index:60;display:flex;flex-direction:column;justify-content:flex-end;">
+            <div onClick="{{ closeMgr }}" style="position:absolute;inset:0;background:rgba(3,9,18,.6);"></div>
+            <div class="pr-scroll" style="position:relative;max-height:88%;border-radius:24px 24px 0 0;overflow-y:auto;background:linear-gradient(180deg,#0d2342,#081627);border-top:1px solid var(--line);box-shadow:0 -20px 50px -20px rgba(0,0,0,.7);animation:prSlide .3s ease;">
+              <div style="position:sticky;top:0;z-index:3;padding:16px 18px 14px;background:{{ mgrSheet.headerBg }},#0d2342;border-bottom:1px solid var(--line);">
+                <button onClick="{{ closeMgr }}" style="position:absolute;top:14px;right:14px;background:none;border:none;cursor:pointer;display:flex;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="width:42px;height:42px;border-radius:50%;background:{{ mgrSheet.color }};display:flex;align-items:center;justify-content:center;flex:none;"><span style="font-family:'Saira Condensed';font-weight:800;font-style:italic;font-size:15px;">{{ mgrSheet.abbr }}</span></div>
+                  <div style="min-width:0;">
+                    <div style="font-family:'Saira Condensed';font-style:italic;font-weight:900;font-size:21px;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ mgrSheet.name }}</div>
+                    <div style="font-size:11.5px;color:var(--dim);margin-top:4px;">{{ mgrSheet.first }} · {{ mgrSheet.filled }} / {{ mgrSheet.slotCount }} filled · Spent {{ mgrSheet.spent }}</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:12px;">
+                  <div style="flex:1;background:rgba(0,0,0,.25);border-radius:10px;padding:8px 6px;text-align:center;">
+                    <div style="font-family:'Barlow Semi Condensed';font-weight:700;font-size:17px;color:var(--green);line-height:1.1;">{{ mgrSheet.budget }}</div>
+                    <div style="font-size:9px;color:var(--dim);letter-spacing:.5px;">BUDGET</div>
+                  </div>
+                  <div style="flex:1;background:rgba(0,0,0,.25);border-radius:10px;padding:8px 6px;text-align:center;">
+                    <div style="font-family:'Barlow Semi Condensed';font-weight:700;font-size:17px;color:var(--gold);line-height:1.1;">{{ mgrSheet.max }}</div>
+                    <div style="font-size:9px;color:var(--dim);letter-spacing:.5px;">MAX BID</div>
+                  </div>
+                </div>
+              </div>
+              <sc-for list="{{ mgrSheet.slots }}" as="r" hint-placeholder-count="14">
+                <div onClick="{{ r.onTap }}" style="display:flex;align-items:center;gap:10px;padding:8px 18px;border-top:1px solid var(--line);cursor:{{ r.cursor }};">
+                  <span style="width:38px;font-family:'Saira Condensed';font-weight:800;font-size:12px;color:{{ r.labelColor }};flex:none;">{{ r.label }}</span>
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;font-size:13px;color:{{ r.nameColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.name }}</div>
+                    <sc-if value="{{ r.filled }}" hint-placeholder-val="{{ false }}"><div style="font-size:10px;color:var(--dim2);">{{ r.sub }}</div></sc-if>
+                  </div>
+                  <span style="font-family:'Barlow Semi Condensed';font-weight:700;font-size:14px;color:var(--gold);flex:none;">{{ r.cost }}</span>
+                </div>
+              </sc-for>
+              <div style="height:22px;"></div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ===== PLAYER DETAIL SHEET ===== -->
+        <sc-if value="{{ playerOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;z-index:70;display:flex;flex-direction:column;justify-content:flex-end;">
+            <div onClick="{{ closePlayer }}" style="position:absolute;inset:0;background:rgba(3,9,18,.6);"></div>
+            <div class="pr-scroll" style="position:relative;max-height:92%;border-radius:24px 24px 0 0;overflow-y:auto;background:{{ player.cardBg }};border-top:1px solid var(--line);box-shadow:0 -20px 50px -20px rgba(0,0,0,.7);animation:prSlide .3s ease;">
+              <div style="position:sticky;top:0;z-index:3;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 0 8px;background:linear-gradient(180deg,#0d2342,rgba(13,35,66,.92));">
+                <div style="width:42px;height:4px;border-radius:2px;background:rgba(255,255,255,.3);"></div>
+              </div>
+              <div style="position:relative;padding:6px 18px 16px;border-bottom:1px solid var(--line);background:{{ player.headerBg }};">
+                <button onClick="{{ closePlayer }}" style="position:absolute;top:6px;right:14px;background:none;border:none;cursor:pointer;display:flex;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--dim)" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                <div style="display:flex;align-items:center;gap:14px;">
+                  <div style="position:relative;width:62px;height:62px;flex:none;">
+                    <div style="width:62px;height:62px;border-radius:50%;overflow:hidden;border:2px solid var(--red);background:#16304f;">
+                      <x-import component-from-global-scope="image-slot" from="./image-slot.js" id="{{ player.photoId }}" shape="circle" placeholder="Photo" hint-size="62px,62px"></x-import>
+                    </div>
+                    {{ player.teamLogoEl }}
+                  </div>
+                  <div style="min-width:0;">
+                    <div style="font-family:'Saira Condensed';font-style:italic;font-weight:900;font-size:23px;line-height:1;">{{ player.name }}</div>
+                    <div style="font-size:12px;color:var(--dim);margin-top:5px;">{{ player.headline }}</div>
+                    <div style="font-size:10.5px;color:var(--dim2);margin-top:3px;font-weight:600;">{{ player.statusText }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;border-bottom:1px solid var(--line);padding:0 8px;">
+                <sc-for list="{{ playerTabs }}" as="t" hint-placeholder-count="3">
+                  <button onClick="{{ t.onClick }}" style="flex:1;background:none;border:none;border-bottom:{{ t.bb }};color:{{ t.color }};cursor:pointer;padding:12px 4px;font-family:'Saira Condensed';font-weight:700;font-size:12.5px;letter-spacing:.5px;">{{ t.label }}</button>
+                </sc-for>
+              </div>
+
+              <sc-if value="{{ tSeason }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:14px 18px 8px;font-family:'Saira Condensed';font-weight:700;font-size:11px;letter-spacing:1px;color:var(--dim);">2025 SEASON TO DATE</div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
+                <sc-for list="{{ player.stats }}" as="st" hint-placeholder-count="6">
+                  <div style="background:#0a1c34;padding:11px 6px;text-align:center;">
+                    <div style="font-family:'Barlow Semi Condensed';font-weight:700;font-size:20px;line-height:1;">{{ st.value }}</div>
+                    <div style="font-size:9.5px;color:var(--dim);font-weight:700;letter-spacing:.6px;margin-top:5px;">{{ st.label }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="padding:15px 18px 6px;font-family:'Saira Condensed';font-weight:700;font-size:11px;letter-spacing:1px;color:var(--dim);">LAST 8 · FANTASY PTS</div>
+              <div style="padding:0 18px 14px;display:flex;align-items:flex-end;gap:5px;height:76px;">
+                <sc-for list="{{ player.form }}" as="f" hint-placeholder-count="8">
+                  <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;justify-content:flex-end;height:100%;">
+                    <span style="font-size:9px;color:var(--dim2);font-weight:700;">{{ f.val }}</span>
+                    <div style="width:100%;border-radius:3px 3px 0 0;background:{{ f.bg }};height:{{ f.h }}%;"></div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="margin:12px 18px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);">
+                <span style="font-size:9.5px;font-weight:800;letter-spacing:.5px;color:var(--red);background:rgba(255,255,255,.06);padding:2px 7px;border-radius:5px;">{{ player.newsTag }}</span>
+                <div style="font-size:12px;color:var(--dim);line-height:1.45;margin-top:7px;">{{ player.newsBody }}</div>
+              </div>
+              </sc-if>
+
+              <sc-if value="{{ tLog2 }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:12px 18px 6px;font-family:'Saira Condensed';font-weight:700;font-size:11px;letter-spacing:1px;color:var(--dim);display:flex;justify-content:space-between;"><span>2025 GAME LOG</span><span style="color:var(--dim2);">{{ player.gameCount }} GP</span></div>
+              <sc-for list="{{ player.gamelog }}" as="g" hint-placeholder-count="12">
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 18px;border-top:1px solid var(--line);">
+                  <div style="width:50px;flex:none;"><div style="font-weight:700;font-size:11.5px;">{{ g.opp }}</div><div style="font-size:9.5px;color:var(--dim2);">{{ g.date }}</div></div>
+                  <div style="flex:1;font-size:11px;color:var(--dim);">{{ g.line }}</div>
+                  <div style="font-family:'Barlow Semi Condensed';font-weight:700;font-size:16px;color:{{ g.ptsColor }};">{{ g.pts }}</div>
+                </div>
+              </sc-for>
+              </sc-if>
+
+              <sc-if value="{{ tCareer }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:12px 18px 6px;font-family:'Saira Condensed';font-weight:700;font-size:11px;letter-spacing:1px;color:var(--dim);">CAREER HISTORY</div>
+              <div class="pr-scroll" style="padding:0 18px 6px;overflow-x:auto;">
+                <div style="min-width:max-content;">
+                  <div style="display:flex;font-size:9.5px;font-weight:800;letter-spacing:.2px;color:var(--dim2);padding:4px 0 6px;border-bottom:1px solid var(--line);">
+                    <span style="width:42px;flex:none;">YEAR</span>
+                    <span style="width:36px;flex:none;">TEAM</span>
+                    <span style="width:50px;flex:none;text-align:right;color:#33b06a;">FPTS</span>
+                    <span style="width:44px;flex:none;text-align:right;color:#33b06a;">FPPG</span>
+                    <sc-for list="{{ player.careerCols }}" as="c" hint-placeholder-count="10"><span style="width:32px;flex:none;text-align:center;">{{ c }}</span></sc-for>
+                    <span style="width:30px;flex:none;text-align:center;">G</span>
+                  </div>
+                  <sc-for list="{{ player.seasons }}" as="s" hint-placeholder-count="5">
+                    <div style="display:flex;font-size:11px;padding:7px 0;border-bottom:1px solid var(--line);background:{{ s.bg }};align-items:center;">
+                      <span style="width:42px;flex:none;font-weight:700;font-family:'Barlow Semi Condensed';">{{ s.year }}</span>
+                      <span style="width:36px;flex:none;font-weight:600;font-size:10px;color:var(--dim);">{{ s.team }}</span>
+                      <span style="width:50px;flex:none;text-align:right;font-weight:700;font-family:'Barlow Semi Condensed';">{{ s.fpts }}</span>
+                      <span style="width:44px;flex:none;text-align:right;font-weight:700;font-family:'Barlow Semi Condensed';color:#33b06a;">{{ s.fppg }}</span>
+                      <sc-for list="{{ s.cells }}" as="v" hint-placeholder-count="10"><span style="width:32px;flex:none;text-align:center;color:var(--dim);font-family:'Barlow Semi Condensed';">{{ v }}</span></sc-for>
+                      <span style="width:30px;flex:none;text-align:center;color:var(--dim);font-family:'Barlow Semi Condensed';">{{ s.gp }}</span>
+                    </div>
+                  </sc-for>
+                  <div style="display:flex;font-size:11px;padding:8px 0 2px;align-items:center;">
+                    <span style="width:42px;flex:none;font-weight:800;font-family:'Saira Condensed';letter-spacing:.4px;">CAREER</span>
+                    <span style="width:36px;flex:none;color:var(--dim2);">{{ player.career.team }}</span>
+                    <span style="width:50px;flex:none;text-align:right;font-weight:800;font-family:'Barlow Semi Condensed';">{{ player.career.fpts }}</span>
+                    <span style="width:44px;flex:none;text-align:right;font-weight:800;font-family:'Barlow Semi Condensed';color:#33b06a;">{{ player.career.fppg }}</span>
+                    <sc-for list="{{ player.career.cells }}" as="v" hint-placeholder-count="10"><span style="width:32px;flex:none;text-align:center;color:#fff;font-weight:600;font-family:'Barlow Semi Condensed';">{{ v }}</span></sc-for>
+                    <span style="width:30px;flex:none;text-align:center;color:#fff;font-weight:600;font-family:'Barlow Semi Condensed';">{{ player.career.gp }}</span>
+                  </div>
+                </div>
+              </div>
+              <div style="font-size:9.5px;color:var(--dim2);padding:7px 18px 0;">* 2025 in progress · FPTS from league scoring · scroll → for all categories</div>
+              </sc-if>
+
+              <div style="padding:12px 18px 26px;border-top:1px solid var(--line);">
+                <div style="width:100%;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:'Saira Condensed';font-weight:800;font-size:14.5px;letter-spacing:1px;background:{{ player.actBg }};color:{{ player.actFg }};border:1.5px solid {{ player.actBorder }};">{{ player.actLabel }}</div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- bottom tabs -->
+        <div style="flex:none;display:flex;border-top:1px solid var(--line);background:rgba(7,18,33,.92);padding:8px 4px 18px;">
+          <button onClick="{{ goBoard }}" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;color:{{ cBoard }};">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            <span style="font-size:10px;font-weight:700;color:#fff;">Board</span>
+          </button>
+          <button onClick="{{ goMgrs }}" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;color:{{ cMgrs }};">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.4"/><path d="M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 5 5v1"/><path d="M16 5.5a3 3 0 0 1 0 5.4"/><path d="M19 20v-1a4.5 4.5 0 0 0-2.5-4"/></svg>
+            <span style="font-size:10px;font-weight:700;color:#fff;">Managers</span>
+          </button>
+          <button onClick="{{ goRoster }}" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;color:{{ cRoster }};">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/><circle cx="8" cy="5" r="1.6" fill="currentColor" stroke="none"/><circle cx="8" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="8" cy="19" r="1.6" fill="currentColor" stroke="none"/></svg>
+            <span style="font-size:10px;font-weight:700;color:#fff;">My Roster</span>
+          </button>
+          <button onClick="{{ goLog }}" style="flex:1;background:none;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;color:{{ cLog }};">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>
+            <span style="font-size:10px;font-weight:700;color:#fff;">Log</span>
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:480,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  BUDGET = 300;
+  ROSTER = ['C','1B','2B','3B','SS','INF','OF','OF','OF','OF','UTIL','UTIL','SP','SP','SP','SP','RP','RP','RP','RP','BN','BN','BN','BN','BN','BN'];
+  ROSTER_LABELS = ['C','1B','2B','3B','SS','IF','OF1','OF2','OF3','OF4','Util1','Util2','SP1','SP2','SP3','SP4','RP1','RP2','RP3','RP4','B1','B2','B3','B4','B5','B6'];
+  POS_COLOR = { C:'#e0a52b','1B':'#ec3b48','2B':'#ec3b48','3B':'#ec3b48',SS:'#ec3b48',INF:'#ec3b48',OF:'#33b06a',DH:'#33b06a',SP:'#7fb6ff',RP:'#b48ce8' };
+  MY_ID = 'AM';
+
+  MLB = []; MANAGERS = [];
+  state = { ready:false, tab:'board', posFilter:'ALL', drafted:{}, log:[], live:null, playerOpen:false, playerSel:null, playerTab:'season' };
+
+  HIT_CATS=['1B','2B','3B','HR','BB','IBB','R','RBI','SB','SO'];
+  PIT_CATS=['IP','K','W','QS','SV','HLD','CG','SHO','ER','H','BB'];
+  SCORING={hit:{'1B':1,'2B':2,'3B':3,HR:4,BB:1,IBB:1,R:1,RBI:1,SB:2,SO:-1},pit:{IP:3,K:1,W:2,QS:5,SV:5,HLD:2,CG:3,SHO:3,ER:-2,H:-1,BB:-1}};
+  _seed(str){let h=2166136261;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+  _rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return ((t^t>>>14)>>>0)/4294967296;};}
+  _teamFull(abbr){const t=this.teamByAbbr(abbr);return t?t.name:(abbr||'—');}
+  _logo(abbr){ const t=this.teamByAbbr(abbr); return (t&&t.logo)?t.logo:''; }
+  _rgba(hex,a){ const n=parseInt(hex.replace('#',''),16); return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
+  _logoBadgeEl(url){
+    if(!url) return null; const R=React.createElement;
+    return R('div',{style:{position:'absolute',right:-4,bottom:-4,width:28,height:28,display:'flex',alignItems:'center',justifyContent:'center'}},
+      R('img',{src:url,alt:'',style:{width:26,height:26,objectFit:'contain',filter:'drop-shadow(0 0 1.5px #0d2342) drop-shadow(0 0 2px rgba(255,255,255,.95)) drop-shadow(0 0 4px rgba(255,255,255,.5))'}}));
+  }
+  openPlayer = (p) => this.setState({playerOpen:true, playerSel:p, playerTab:'season'});
+  openMgr = (id) => this.setState({mgrOpen:id});
+  closeMgr = () => this.setState({mgrOpen:null});
+  closePlayer = () => this.setState({playerOpen:false});
+  setPlayerTab = (t) => this.setState({playerTab:t});
+
+  buildPlayer(p){
+    if(!p)return null;
+    const rnd=this._rng(this._seed(p.name));
+    const pit=/^(SP|RP|P)$/.test(p.pos);
+    const R=(min,max,dec=0)=>{const v=min+(max-min)*rnd();return dec?Number(v.toFixed(dec)):Math.round(v);};
+    const team=p.team||'';
+    const teamFull=this._teamFull(team);
+    let stats;
+    if(pit){stats=[
+      {label:'ERA',value:R(2.4,4.6,2).toFixed(2)},{label:'W–L',value:R(4,14)+'–'+R(2,9)},
+      {label:'K',value:String(R(95,230))},{label:'WHIP',value:R(0.95,1.4,2).toFixed(2)},
+      {label:'IP',value:R(70,180)+'.'+R(0,2)},{label:p.pos==='RP'?'SV':'QS',value:String(p.pos==='RP'?R(6,32):R(6,20))}];
+    }else{stats=[
+      {label:'AVG',value:R(0.235,0.325,3).toFixed(3).replace(/^0/,'')},{label:'HR',value:String(R(9,48))},
+      {label:'RBI',value:String(R(32,122))},{label:'R',value:String(R(38,115))},
+      {label:'SB',value:String(R(1,42))},{label:'OPS',value:R(0.7,1.02,3).toFixed(3).replace(/^0/,'')}];
+    }
+    const SC=this.SCORING;
+    const hitFp=(c)=>{let t=0;for(const k of this.HIT_CATS)t+=(c[k]||0)*SC.hit[k];return t;};
+    const pitFp=(c)=>{let t=0;for(const k of this.PIT_CATS){const pv=SC.pit[k];t+=(k==='IP')?(c.IP/3)*pv:(c[k]||0)*pv;}return t;};
+    const r1=(x)=>Math.round(x*10)/10;
+    const ipStr=(outs)=>Math.floor(outs/3)+'.'+(outs%3);
+    const pc=(v)=>v>=12?'#33b06a':(v>=6?'#fff':'#90a4bf');
+    const isSP=pit&&p.pos!=='RP';
+    const opps=['@ MIN','vs TOR','@ HOU','vs COL','@ STL','vs SD','vs LAD','@ CHC','vs PIT','@ CIN','vs MIL','@ SF','vs ARI','@ WSH','vs PHI','@ BAL'];
+    const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const DIM=[31,29,31,30,31,30,31,31,30,31,30,31];
+    const dstr=(da)=>{let m=6,d=8;for(let i=0;i<da;i++){d--;if(d<1){m--;if(m<0)m=11;d=DIM[m];}}return MON[m]+' '+d;};
+    const sb=this._seed(p.name);
+    const gcount=pit?(isSP?R(17,20):R(38,46)):R(84,92);
+    let da=0;const gamelog=[];
+    const y25=pit?{IP:0,K:0,W:0,QS:0,SV:0,HLD:0,CG:0,SHO:0,ER:0,H:0,BB:0}:{'1B':0,'2B':0,'3B':0,HR:0,BB:0,IBB:0,R:0,RBI:0,SB:0,SO:0};
+    for(let i=0;i<gcount;i++){
+      let line,fp,c;
+      if(!pit){
+        const roll=rnd();let hits=roll<0.40?0:roll<0.73?1:roll<0.91?2:roll<0.98?3:4;
+        let hr=0,t3=0,d2=0,s1=0;
+        for(let h=0;h<hits;h++){const t=rnd();if(t<0.12)hr++;else if(t<0.16)t3++;else if(t<0.40)d2++;else s1++;}
+        const bbR=rnd();const bb=bbR<0.66?0:bbR<0.93?1:2;
+        const ibb=rnd()<0.05?1:0;
+        const soR=rnd();const so=soR<0.30?0:soR<0.66?1:soR<0.89?2:3;
+        const sbs=rnd()<0.12?1:0;
+        const r=Math.min(hits+bb,(rnd()<0.5?0:rnd()<0.6?1:2));
+        const rbi=hr+(rnd()<0.4?0:rnd()<0.72?1:rnd()<0.9?2:3);
+        c={'1B':s1,'2B':d2,'3B':t3,HR:hr,BB:bb,IBB:ibb,R:r,RBI:rbi,SB:sbs,SO:so};
+        fp=hitFp(c);
+        const ord=['HR','3B','2B','1B','R','RBI','SB','BB','IBB','SO'];
+        const seg=ord.filter(k=>c[k]).map(k=>(c[k]>1?c[k]+' ':'')+k);
+        line=seg.length?seg.join(' · '):'0-fer';
+      } else {
+        let outs,h,er,bb,k,w,qs,sv,hld,cg,sho;
+        if(isSP){outs=R(15,21);h=R(3,9);er=R(0,5);bb=R(0,4);k=R(3,11);qs=(outs>=18&&er<=3)?1:0;cg=rnd()<0.04?1:0;sho=(cg&&er===0)?1:0;w=rnd()<0.42?1:0;sv=0;hld=0;}
+        else{outs=R(1,4);h=R(0,2);er=R(0,2);bb=R(0,2);k=R(0,3);qs=0;cg=0;sho=0;sv=rnd()<0.35?1:0;hld=(!sv&&rnd()<0.4)?1:0;w=rnd()<0.12?1:0;}
+        c={IP:outs,K:k,W:w,QS:qs,SV:sv,HLD:hld,CG:cg,SHO:sho,ER:er,H:h,BB:bb};
+        fp=pitFp(c);
+        const seg=[ipStr(outs)+' IP',k+' K'];
+        if(w)seg.push('W');if(qs)seg.push('QS');if(sv)seg.push('SV');if(hld)seg.push('HLD');if(cg)seg.push('CG');if(sho)seg.push('SHO');
+        if(er)seg.push(er+' ER');if(h)seg.push(h+' H');if(bb)seg.push(bb+' BB');
+        line=seg.join(' · ');
+      }
+      for(const k in c)y25[k]+=c[k];
+      gamelog.push({date:dstr(da),opp:opps[(sb+i*7)%opps.length],line,pts:String(r1(fp)),ptsColor:pc(fp)});
+      da+=pit?(isSP?R(4,6):R(2,4)):(i%5===4?R(2,3):1);
+    }
+    const f8=gamelog.slice(0,8).map(g=>Number(g.pts));
+    let fmax=1;f8.forEach(v=>{if(Math.abs(v)>fmax)fmax=Math.abs(v);});
+    const form=f8.map(v=>({h:Math.max(8,Math.round(Math.abs(v)/fmax*100)),val:String(v),bg:v>=(pit?10:8)?'var(--green)':'rgba(255,255,255,.18)'}));
+    const careerCols=pit?this.PIT_CATS:this.HIT_CATS;
+    const fmtCell=(k,v)=>k==='IP'?ipStr(v):String(v);
+    const nPrior=3+Math.floor(rnd()*6);
+    const debut=2025-nPrior;
+    const curTeam=team||'FA';
+    const _tk=this.MLB.map(t=>t.abbr);
+    let priorTeam=_tk[(sb>>>3)%_tk.length];if(priorTeam===curTeam)priorTeam=_tk[((sb>>>3)+1)%_tk.length];
+    const joinYear=debut+Math.floor(rnd()*nPrior);
+    const seasons=[];
+    const tot=pit?{IP:0,K:0,W:0,QS:0,SV:0,HLD:0,CG:0,SHO:0,ER:0,H:0,BB:0,G:0,FP:0}:{'1B':0,'2B':0,'3B':0,HR:0,BB:0,IBB:0,R:0,RBI:0,SB:0,SO:0,G:0,FP:0};
+    for(let y=2025;y>=debut;y--){
+      const partial=(y===2025);
+      let c,g,fp;
+      if(partial){c=y25;g=gcount;fp=Math.round(gamelog.reduce((a,x)=>a+Number(x.pts),0));}
+      else if(!pit){g=R(138,159);c={'1B':R(78,140),'2B':R(22,42),'3B':R(0,7),HR:R(10,46),BB:R(35,88),IBB:R(1,18),R:R(58,118),RBI:R(50,120),SB:R(1,42),SO:R(85,190)};fp=hitFp(c);}
+      else if(isSP){g=R(29,34);c={IP:R(450,615),K:R(135,240),W:R(6,18),QS:R(12,26),SV:0,HLD:0,CG:R(0,3),SHO:R(0,2),ER:R(52,86),H:R(130,195),BB:R(32,72)};fp=pitFp(c);}
+      else{g=R(58,70);c={IP:R(165,225),K:R(52,96),W:R(2,8),QS:0,SV:R(4,40),HLD:R(6,32),CG:0,SHO:0,ER:R(14,32),H:R(38,68),BB:R(14,36)};fp=pitFp(c);}
+      const cells=careerCols.map(k=>fmtCell(k,c[k]));
+      for(const k of careerCols)tot[k]+=c[k];
+      tot.G+=g;tot.FP+=fp;
+      seasons.push({year:partial?'2025*':String(y),team:(y>=joinYear?curTeam:priorTeam),cells,gp:String(g),fpts:fp.toLocaleString(),fppg:(fp/g).toFixed(2),bg:partial?'rgba(226,38,52,.09)':'transparent'});
+    }
+    const career={team:'—',cells:careerCols.map(k=>fmtCell(k,tot[k])),gp:tot.G.toLocaleString(),fpts:tot.FP.toLocaleString(),fppg:(tot.FP/tot.G).toFixed(2)};
+    const d=this.state.drafted[p.playerId];
+    const mgr=d?this.MANAGERS.find(m=>m.id===d.managerId):null;
+    const posDisp=p.elig||p.pos;
+    const statusText=d?((d.keeper?'Keeper — ':'Drafted — ')+(mgr?mgr.name:'')+' · $'+d.price):'Undrafted · available';
+    const lastName=p.name.split(' ').slice(-1)[0].replace('.','');
+    let actLabel,actBg,actFg,actBorder;
+    if(d){actLabel=(d.keeper?'KEEPER · ':'DRAFTED · ')+(mgr?mgr.abbr:'')+' · $'+d.price;actBg='rgba(255,255,255,.05)';actFg='#5f7d9c';actBorder='rgba(255,255,255,.09)';}
+    else{actLabel='AVAILABLE — BID ON THE BIG BOARD';actBg='rgba(51,176,106,.14)';actFg='#33b06a';actBorder='rgba(51,176,106,.3)';}
+    return {name:p.name,pos:posDisp,teamFull,teamLogoEl:team?this._logoBadgeEl(this._logo(team)):null,headline:(teamFull&&teamFull!=='—')?(posDisp+' · '+teamFull):posDisp,
+      statusText,stats,form,gamelog,gameCount:gamelog.length,careerCols,seasons,career,
+      headerBg: team && this.teamByAbbr(team) ? ('linear-gradient(120deg,'+this._rgba(this.teamByAbbr(team).color,0.6)+' 0%,'+this._rgba(this.teamByAbbr(team).color,0.12)+' 60%,transparent 100%)') : 'linear-gradient(120deg,rgba(226,38,52,.16),transparent)',
+      cardBg: team && this.teamByAbbr(team) ? ('linear-gradient(180deg,'+this._rgba(this.teamByAbbr(team).color,0.55)+' 0%,'+this._rgba(this.teamByAbbr(team).color,0.18)+' 260px,'+this._rgba(this.teamByAbbr(team).color,0)+' 560px), #0b1a30') : 'linear-gradient(180deg,#0d2342,#081627)',
+      photoId:'ph-'+p.name.toLowerCase().replace(/[^a-z0-9]+/g,'-'),
+      newsTag:pit?'PROBABLE':'HOT',newsBody:pit?('Projected to start soon. Plus matchup on the horizon.'):(lastName+' is 8 for his last 15 with 3 extra-base hits — trending up into a favorable stretch.'),
+      actLabel,actBg,actFg,actBorder};
+  }
+
+  componentDidMount(){ this._tryBuild(0); }
+  componentWillUnmount(){ clearInterval(this._poll); }
+  _tryBuild(tries){
+    if(typeof window!=='undefined' && window.PR2026){
+      this._build();
+      this._sync();
+      this._poll=setInterval(()=>this._sync(),1500);
+      return;
+    }
+    if(tries<40) setTimeout(()=>this._tryBuild(tries+1),150);
+  }
+  _build(){
+    const D=window.PR2026; this._raw=D;
+    this.MANAGERS = D.managers.map(m=>({id:m.id,abbr:m.id,name:m.team,first:m.first,color:m.color}));
+    const byTeam={};
+    D.players.forEach(pl=>{ const k=pl.mlb||'NA'; (byTeam[k]=byTeam[k]||[]).push([pl.n,pl.p,pl.p2||null]); });
+    const mlb=[];
+    Object.keys(D.teams).sort().forEach(abbr=>{ const t=D.teams[abbr]; mlb.push({abbr,name:t.name,color:t.color,color2:t.color2,logo:t.logo,players:byTeam[abbr]||[]}); });
+    if(byTeam['NA']) mlb.push({abbr:'NA',name:'No MLB Team',color:'#33507a',color2:'#1d3557',logo:'',players:byTeam['NA'],noHat:true});
+    this.MLB=mlb;
+  }
+  _sync(){
+    let live=null, drafted={}, log=[];
+    try{ const lr=localStorage.getItem('prDraftLive'); if(lr) live=JSON.parse(lr); }catch(e){}
+    const year=(live&&live.year)||'2026';
+    try{ const raw=localStorage.getItem('prDraft_'+year); if(raw){ const o=JSON.parse(raw); drafted=o.drafted||{}; log=o.log||[]; } }catch(e){}
+    if(year==='2026' && !Object.keys(drafted).length && this._raw){
+      this._raw.players.forEach(pl=>{ if(pl.o&&pl.pr!=null){ const k=pl.mlb||'NA'; drafted[this.pid(k,pl.n)]={managerId:pl.o,price:pl.pr,slot:pl.s||null}; log.unshift({playerId:this.pid(k,pl.n),name:pl.n,pos:pl.p,teamAbbr:k,managerId:pl.o,price:pl.pr}); } });
+    }
+    const next=JSON.stringify({live,dc:Object.keys(drafted).length,lc:log.length});
+    if(this._last!==next || !this.state.ready){ this._last=next; this.setState({ready:true, live, drafted, log, year}); }
+  }
+
+  pid(t,n){ return t+'|'+n; }
+  teamByAbbr(a){ return this.MLB.find(t=>t.abbr===a); }
+  _spentWon(){
+    const spent={},won={};
+    this.MANAGERS.forEach(m=>{spent[m.id]=0;won[m.id]=0;});
+    Object.values(this.state.drafted).forEach(d=>{ if(spent[d.managerId]!=null){spent[d.managerId]+=d.price;won[d.managerId]++;} });
+    return {spent,won};
+  }
+  _maxBid(id,spent,won){ const b=this.BUDGET-spent[id]; const sp=this.ROSTER.length-won[id]; if(sp<=0)return 0; return b-(sp-1); }
+  _mySlots(){ return this._slotsFor(this.MY_ID); }
+  _slotsFor(mgrId){
+    const picks=[];
+    Object.entries(this.state.drafted).forEach(([id,d])=>{ if(d.managerId!==mgrId)return; const parts=id.split('|'); const t=this.teamByAbbr(parts[0]); const pl=t?t.players.find(p=>this.pid(parts[0],p[0])===id):null; picks.push({name:parts[1],pos:pl?pl[1]:'',elig:pl&&pl[2]?(pl[1]+','+pl[2]):(pl?pl[1]:''),team:parts[0],playerId:id,price:d.price}); });
+    const fits=(pos,slot)=>{ if(slot==='BN')return true; if(slot===pos)return true; if(slot==='INF')return ['1B','2B','3B','SS'].includes(pos); if(slot==='OF')return pos==='OF'||pos==='DH'; if(slot==='UTIL')return !['SP','RP'].includes(pos); return false; };
+    const taken=new Set(); const out=[];
+    this.ROSTER.forEach((slot,i)=>{
+      let found=null;
+      picks.forEach(p=>{ if(found||taken.has(p.name))return; if(fits(p.pos,slot))found=p; });
+      if(found)taken.add(found.name);
+      out.push({ label:this.ROSTER_LABELS[i], slot, name:found?found.name:'—', cost:found?('$'+found.price):'', filled:!!found,
+        sub:found?((found.elig||found.pos)+(found.team&&found.team!=='NA'?' · '+found.team:'')):'', pick:found||null });
+    });
+    return out;
+  }
+
+  go=(t)=>this.setState({tab:t});
+  setPos=(p)=>this.setState({posFilter:p});
+
+  renderVals(){
+    const s=this.state;
+    const RED='#e22634',DIM2='#5f7d9c',GOLD='#e0a52b';
+    const live=s.live||{};
+    const year=s.year||(live.year)||'2026';
+    const isLive=year==='2027';
+    const hat=live.hatOrder&&live.hatOrder.length?live.hatOrder:this.MLB.filter(t=>!t.noHat).map(t=>t.abbr);
+    const clockAbbr=hat[Math.min(live.onClock||0,hat.length-1)]||'ATL';
+    const clockT=this.teamByAbbr(clockAbbr)||{name:'—',color:'#16335a',color2:'#0c1f3a',players:[]};
+    const leftCount=clockT.players.filter(p=>!s.drafted[this.pid(clockAbbr,p[0])]).length;
+    const bannerC = clockAbbr==='PIT' ? '#17150f' : (clockT.color2||clockT.color);
+
+    const {spent,won}=this._spentWon();
+    const me=this.MANAGERS.find(m=>m.id===this.MY_ID)||{name:'Acuña Matata',color:'#1f6f3f'};
+
+    // board
+    const chips=[['ALL',null],['C·IF',['C','1B','2B','3B','SS','INF']],['OF',['OF','DH']],['SP',['SP']],['RP',['RP']]];
+    const posChips=chips.map(([label,list])=>{ const on=s.posFilter===label; return { label, onTap:()=>this.setPos(label),
+      bg:on?RED:'rgba(255,255,255,.05)', fg:on?'#fff':DIM2, border:on?RED:'rgba(255,255,255,.09)' }; });
+    const activeList=(chips.find(c=>c[0]===s.posFilter)||chips[0])[1];
+    const boardRows=clockT.players
+      .filter(p=>!activeList||activeList.includes(p[1])||(p[2]&&activeList.includes(p[2])))
+      .map(p=>{ const id=this.pid(clockAbbr,p[0]); const d=s.drafted[id];
+        const mgr=d?this.MANAGERS.find(m=>m.id===d.managerId):null;
+        const elig=p[2]?(p[1]+','+p[2]):p[1];
+        return { name:p[0], pos:p[1], posDisp:elig, posColor:this.POS_COLOR[p[1]]||'#90a4bf',
+          onTap:()=>this.openPlayer({name:p[0],pos:p[1],elig,team:clockAbbr,playerId:id}),
+          isDrafted:!!d, isOpen:!d, rowOpacity:d?'.55':'1',
+          nameColor:d?'#90a4bf':'#fff', wonBy:mgr?mgr.abbr:'', wonColor:mgr?mgr.color:'#fff',
+          price:d?('$'+d.price):'' }; })
+      .sort((a,b)=>{ const dr=(a.isDrafted?1:0)-(b.isDrafted?1:0); if(dr) return dr;
+        const PO={C:0,'1B':1,'2B':2,'3B':3,SS:4,INF:5,OF:6,DH:7,UTIL:8,SP:9,RP:10};
+        const po=(PO[a.pos]??11)-(PO[b.pos]??11); if(po) return po;
+        return a.name.localeCompare(b.name); });
+
+    // managers
+    const mgrRows=this.MANAGERS.map(m=>({ abbr:m.abbr, name:m.name, first:m.first, color:m.color,
+      budget:'$'+(this.BUDGET-spent[m.id]), max:'$'+this._maxBid(m.id,spent,won), spots:this.ROSTER.length-won[m.id],
+      onTap:()=>this.openMgr(m.id),
+      bg:m.id===this.MY_ID?'rgba(226,38,52,.08)':'transparent' }));
+
+    // manager roster sheet
+    let mgrSheet=null;
+    if(s.mgrOpen){
+      const m=this.MANAGERS.find(x=>x.id===s.mgrOpen);
+      if(m){
+        const slots=this._slotsFor(m.id).map(r=>({ label:r.label, name:r.name, cost:r.cost||'',
+          labelColor:this.POS_COLOR[r.slot]||(r.slot==='BN'?DIM2:'#90a4bf'),
+          nameColor:r.filled?'#fff':DIM2, sub:r.sub||'', filled:r.filled,
+          cursor:r.filled?'pointer':'default',
+          onTap:r.pick?(()=>this.openPlayer({name:r.pick.name,pos:r.pick.pos,elig:r.pick.elig,team:r.pick.team,playerId:r.pick.playerId})):(()=>{}) }));
+        mgrSheet={ name:m.name, first:m.first, abbr:m.abbr, color:m.color,
+          headerBg:'linear-gradient(120deg,'+this._rgba(m.color,0.55)+','+this._rgba(m.color,0.12)+')',
+          budget:'$'+(this.BUDGET-spent[m.id]), max:'$'+this._maxBid(m.id,spent,won),
+          filled:won[m.id], slotCount:this.ROSTER.length, spent:'$'+spent[m.id], slots };
+      }
+    }
+
+    // roster
+    const mySlots=this._mySlots().map(r=>({ ...r,
+      labelColor:this.POS_COLOR[r.slot]||(r.slot==='BN'?DIM2:'#90a4bf'),
+      nameColor:r.filled?'#fff':DIM2, cost:r.cost||'', costColor:GOLD,
+      cursor:r.filled?'pointer':'default',
+      onTap:r.pick?(()=>this.openPlayer({name:r.pick.name,pos:r.pick.pos,elig:r.pick.elig,team:r.pick.team,playerId:r.pick.playerId})):(()=>{}) }));
+
+    // log
+    const logRows=(s.log||[]).slice(0,60).map((e,i)=>{ const mgr=this.MANAGERS.find(m=>m.id===e.managerId);
+      const t=this.teamByAbbr(e.teamAbbr); const pl=t?t.players.find(x=>x[0]===e.name):null;
+      const elig=pl&&pl[2]?(pl[1]+','+pl[2]):e.pos;
+      return { num:(s.log.length-i), name:e.name, pos:e.pos, posColor:this.POS_COLOR[e.pos]||'#90a4bf',
+        onTap:()=>this.openPlayer({name:e.name,pos:e.pos,elig,team:e.teamAbbr,playerId:e.playerId}),
+        mgr:mgr?mgr.name:'—', price:'$'+e.price }; });
+
+    const nom=live.nom||null;
+    let nomName='',nomPos='',nomBid='';
+    if(nom&&nom.playerId){ const parts=nom.playerId.split('|'); nomName=parts[1]; const t=this.teamByAbbr(parts[0]); const pl=t?t.players.find(p=>this.pid(parts[0],p[0])===nom.playerId):null; nomPos=pl?pl[1]:''; nomBid='$'+(nom.bid||1); }
+
+    const navc=(k)=>s.tab===k?RED:DIM2;
+    return {
+      ready:s.ready,
+      yearLabel: year+' Auction', liveTag:isLive?'LIVE':'FINAL', liveBg:isLive?RED:'rgba(224,165,43,.35)',
+      clock:{ abbr:clockAbbr, name:clockT.name, logo:clockT.logo||'', hasLogo:!!clockT.logo, bg:bannerC, left:leftCount },
+      nomOn:!!(nom&&nom.playerId), nomName, nomPos, nomBid,
+      myAbbr:this.MY_ID, myName:me.name, myColor:me.color,
+      myBudget:'$'+(this.BUDGET-(spent[this.MY_ID]||0)), myMax:'$'+this._maxBid(this.MY_ID,spent,won),
+      mySpots:this.ROSTER.length-(won[this.MY_ID]||0), mySpent:'$'+(spent[this.MY_ID]||0),
+      myFilled:won[this.MY_ID]||0, slotCount:this.ROSTER.length,
+      posChips, boardRows, boardEmpty:boardRows.length===0,
+      mgrRows, mySlots, logRows, logCount:(s.log||[]).length, logEmpty:(s.log||[]).length===0,
+      mgrSheet, mgrOpen:!!mgrSheet, closeMgr:this.closeMgr,
+      player:this.buildPlayer(s.playerSel), playerOpen:s.playerOpen, closePlayer:this.closePlayer,
+      playerTabs:[{key:'season',label:'Season'},{key:'log',label:'Game Log'},{key:'career',label:'Career'}].map(t=>({label:t.label,onClick:()=>this.setPlayerTab(t.key),color:s.playerTab===t.key?'#fff':DIM2,bb:s.playerTab===t.key?'2.5px solid '+RED:'2.5px solid transparent'})),
+      tSeason:s.playerTab==='season', tLog2:s.playerTab==='log', tCareer:s.playerTab==='career',
+      tBoard:s.tab==='board', tMgrs:s.tab==='mgrs', tRoster:s.tab==='roster', tLog:s.tab==='log',
+      goBoard:()=>this.go('board'), goMgrs:()=>this.go('mgrs'), goRoster:()=>this.go('roster'), goLog:()=>this.go('log'),
+      cBoard:navc('board'), cMgrs:navc('mgrs'), cRoster:navc('roster'), cLog:navc('log'),
+    };
+  }
+}
+</script>
+</body>
+</html>
