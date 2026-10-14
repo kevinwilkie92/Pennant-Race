@@ -43,13 +43,17 @@ On a physical phone, set `EXPO_PUBLIC_API_URL` to your computer's LAN address.
 
 ## Running the draft
 
-Open the app's ☰ menu → **Draft Room (TV board)**, or go to `/draft` on the web build (put this on the TV).
+Open the app's ☰ menu. **Big Board (TV)** (`/draft` on the web build) is the commissioner's screen for the TV.
+**Draft Room** (`/draft-room`) is the phone companion every manager uses.
 
 1. Commissioner (team `AM`) signs in and chooses **START NEW SEASON** — this creates the live season.
 2. **NEXT TEAM** draws an MLB team from the hat (**SHUFFLE HAT** redraws). Everyone else's screen follows instantly.
 3. Click **DRAFT** on a player, choose the winning manager, enter the bid, **AWARD**. Bids are checked on the server
    (≥ $1, ≤ the manager's max bid, open roster spot). **UNDO** reverts the last sale.
 4. Non-commissioners see the same board live, read-only. Tabs: Draft Board · Rosters · Undrafted · Draft Log.
+5. Phone companion (read-only, live): on-the-clock team, latest pick, your wallet (budget / max bid / spots),
+   player board with position filters and eligible positions, every manager's money, tap a manager for their roster,
+   your roster, and the draft log.
 
 Keepers tab and pre-draft keeper placement come with "Push to 2027" (not built yet).
 
@@ -81,8 +85,8 @@ Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth wi
 roster / draft-state / commissioner sale + undo endpoints with server-side bid validation,
 live draft broadcast (Durable Object WebSocket at `/draft/ws?token=…`), and the app's
 login, My Team lineup, League team list/rosters, theme switcher (dark/light/broadcast/network),
-and the TV draft board (hat draw, award card with bid validation, money rail, rosters, undrafted, log, undo, live sync).
+the phone draft companion, and the TV draft board (hat draw, award card with bid validation, money rail, rosters, undrafted, log, undo, live sync).
 
 Next, roughly in order: Matchup + daily points (needs an MLB stats feed), Players/free agents and
 waivers/trades, standings and playoff bracket, chat, the draft room UIs (TV board + phone companion),
-draft keepers tab, keeper picker and "Push to 2027", the phone draft companion,, team logo upload (R2), Google/Apple sign-in.
+draft keepers tab, keeper picker and "Push to 2027",, team logo upload (R2), Google/Apple sign-in.

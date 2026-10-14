@@ -39,8 +39,11 @@ function Header() {
                 </Pressable>
               ))}
             </View>
+            <Pressable onPress={() => { setOpen(false); router.push('/draft-room'); }} style={{ marginBottom: 14 }}>
+              <Text style={{ color: t.text, fontFamily: FONT.bodyBold, fontSize: 15 }}>Draft Room</Text>
+            </Pressable>
             <Pressable onPress={() => { setOpen(false); router.push('/draft'); }} style={{ marginBottom: 14 }}>
-              <Text style={{ color: t.text, fontFamily: FONT.bodyBold, fontSize: 15 }}>Draft Room (TV board)</Text>
+              <Text style={{ color: t.text, fontFamily: FONT.bodyBold, fontSize: 15 }}>Big Board (TV)</Text>
             </Pressable>
             <Pressable onPress={() => { setOpen(false); signOut(); }}>
               <Text style={{ color: t.red, fontFamily: FONT.bodyBold, fontSize: 15 }}>Sign out</Text>
