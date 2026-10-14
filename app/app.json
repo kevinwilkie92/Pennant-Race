@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "Pennant Race",
+    "slug": "pennant-race",
+    "scheme": "pennantrace",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/logo.png",
+    "plugins": ["expo-router", "expo-secure-store", "expo-font"],
+    "web": { "bundler": "metro", "output": "single", "favicon": "./assets/logo.png" },
+    "experiments": { "typedRoutes": false }
+  }
+}

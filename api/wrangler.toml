@@ -1,0 +1,20 @@
+name = "pennant-race-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pennant-race"
+database_id = "REPLACE_WITH_ID_FROM_wrangler_d1_create"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "LOGOS"
+bucket_name = "pennant-race-logos"
+
+[durable_objects]
+bindings = [{ name = "DRAFT_ROOM", class_name = "DraftRoom" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DraftRoom"]

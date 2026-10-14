@@ -1,0 +1,22 @@
+{
+  "name": "pennant-race",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "api",
+    "app"
+  ],
+  "scripts": {
+    "test": "npm test -w @pennant/domain",
+    "typecheck": "npm run typecheck -w @pennant/domain && npm run typecheck -w @pennant/api && npm run typecheck -w pennant-app",
+    "seed:sql": "node api/scripts/make-seed.mjs",
+    "api:dev": "npm run dev -w @pennant/api",
+    "app:start": "npm run start -w pennant-app",
+    "app:web": "npm run web -w pennant-app"
+  },
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3"
+  }
+}

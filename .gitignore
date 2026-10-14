@@ -1,0 +1,8 @@
+node_modules/
+.wrangler/
+.expo/
+dist/
+web-build/
+.dev.vars
+*.log
+expo-env.d.ts
