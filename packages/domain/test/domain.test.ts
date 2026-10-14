@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   maxBid, validateBid, keeperCost, keeperTier, rolloverBucket, ROSTER_SIZE, ROSTER_LABELS,
-  scoreHitter, scorePitcher, hitterEligibility, pitcherEligibility, canFillSlot, playerSubline,
+  scoreHitter, scorePitcher, assignSlots, hitterEligibility, pitcherEligibility, canFillSlot, playerSubline,
 } from '../src';
 
 describe('draft budget', () => {
@@ -65,5 +65,33 @@ describe('eligibility', () => {
     expect(canFillSlot('SS', ['2B', 'SS'])).toBe(true);
     expect(canFillSlot('INF', ['SS'])).toBe(true);
     expect(canFillSlot('UTIL', ['SP'])).toBe(false);
+  });
+});
+
+describe('assignSlots', () => {
+  it('keeps given slots and fills the rest by position, then IF, Util, bench', () => {
+    const m = assignSlots([
+      { playerId: 1, positions: ['SS'], slot: 'SS' },
+      { playerId: 2, positions: ['SS'] },          // SS taken -> IF
+      { playerId: 3, positions: ['SS'] },          // -> Util1
+      { playerId: 4, positions: ['OF'] },
+      { playerId: 5, positions: ['OF'] },
+      { playerId: 6, positions: ['SP'] },
+      { playerId: 7, positions: ['RP'] },
+      { playerId: 8, positions: ['SP', 'RP'] },
+    ]);
+    expect(m.get(1)).toBe('SS');
+    expect(m.get(2)).toBe('IF');
+    expect(m.get(3)).toBe('Util1');
+    expect([m.get(4), m.get(5)]).toEqual(['OF1', 'OF2']);
+    expect(m.get(6)).toBe('SP1');
+    expect(m.get(7)).toBe('RP1');
+    expect(m.get(8)).toBe('SP2');
+  });
+  it('overflows to bench, never double-books, and drops extras past 26', () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ playerId: i + 1, positions: ['OF'] }));
+    const m = assignSlots(many);
+    expect(m.size).toBe(12); // OF1-4, Util1-2, B1-6 (IF needs an infielder)
+    expect(new Set(m.values()).size).toBe(m.size);
   });
 });

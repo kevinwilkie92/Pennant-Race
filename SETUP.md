@@ -41,6 +41,18 @@ npm run web              # or: npm run start  (scan the QR code with Expo Go)
 On the login screen choose **Join with your league code**, enter the `JOIN_CODE`, pick your team and set a password.
 On a physical phone, set `EXPO_PUBLIC_API_URL` to your computer's LAN address.
 
+## Running the draft
+
+Open the app's ☰ menu → **Draft Room (TV board)**, or go to `/draft` on the web build (put this on the TV).
+
+1. Commissioner (team `AM`) signs in and chooses **START NEW SEASON** — this creates the live season.
+2. **NEXT TEAM** draws an MLB team from the hat (**SHUFFLE HAT** redraws). Everyone else's screen follows instantly.
+3. Click **DRAFT** on a player, choose the winning manager, enter the bid, **AWARD**. Bids are checked on the server
+   (≥ $1, ≤ the manager's max bid, open roster spot). **UNDO** reverts the last sale.
+4. Non-commissioners see the same board live, read-only. Tabs: Draft Board · Rosters · Undrafted · Draft Log.
+
+Keepers tab and pre-draft keeper placement come with "Push to 2027" (not built yet).
+
 ## 3. Deploy to Cloudflare
 
 ```bash
@@ -68,8 +80,9 @@ For the phone apps, build with EAS (`npx eas build`) pointing at the same API UR
 Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code,
 roster / draft-state / commissioner sale + undo endpoints with server-side bid validation,
 live draft broadcast (Durable Object WebSocket at `/draft/ws?token=…`), and the app's
-login, My Team lineup, League team list/rosters, theme switcher (dark/light/broadcast/network).
+login, My Team lineup, League team list/rosters, theme switcher (dark/light/broadcast/network),
+and the TV draft board (hat draw, award card with bid validation, money rail, rosters, undrafted, log, undo, live sync).
 
 Next, roughly in order: Matchup + daily points (needs an MLB stats feed), Players/free agents and
 waivers/trades, standings and playoff bracket, chat, the draft room UIs (TV board + phone companion),
-keeper picker and "Push to 2027", team logo upload (R2), Google/Apple sign-in.
+draft keepers tab, keeper picker and "Push to 2027", the phone draft companion,, team logo upload (R2), Google/Apple sign-in.

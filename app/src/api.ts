@@ -31,6 +31,16 @@ export type RosterSlot = {
 };
 export type Me = { user: { id: string; email: string; teamId: string | null; isCommissioner: boolean }; team: { id: string; name: string; color: string; owner_name: string; faab: number } | null };
 
+export type DraftSale = {
+  seq: number; playerId: number; name: string; teamId: string; price: number;
+  isKeeper: number; keeperYear: number | null; slot: string | null;
+};
+export type DraftManager = { teamId: string; spent: number; filled: number; remaining: number; maxBid: number; spots: number };
+export type DraftState = { season: number; hat: string | null; managers: DraftManager[]; sales: DraftSale[] };
+export type DraftPlayer = { id: number; name: string; mlbTeam: string | null; pos: string; pos2: string | null; positions: string[] };
+export type MlbTeam = { abbr: string; name: string; logo: string | null; color: string | null; color2: string | null };
+export type SeasonRow = { year: number; status: 'live' | 'archived' };
+
 export const api = {
   login: (email: string, password: string) =>
     call<{ token: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
@@ -39,6 +49,15 @@ export const api = {
   logout: () => call<{ ok: true }>('/auth/logout', { method: 'POST' }),
   me: () => call<Me>('/me'),
   publicTeams: () => call<{ id: string; name: string; owner: string; claimed: number }[]>('/public/teams'),
+  seasons: () => call<SeasonRow[]>('/seasons'),
+  startSeason: (year: number) => call<{ year: number }>('/seasons', { method: 'POST', body: JSON.stringify({ year }) }),
+  mlbTeams: () => call<MlbTeam[]>('/mlb-teams'),
+  draftPlayers: (season: number) => call<DraftPlayer[]>(`/draft/players?season=${season}`),
+  draftState: (season: number) => call<DraftState>(`/draft/state?season=${season}`),
+  sell: (b: { playerId: number; teamId: string; price: number }) =>
+    call<{ seq: number }>('/draft/sales', { method: 'POST', body: JSON.stringify(b) }),
+  undo: () => call<{ ok: true }>('/draft/sales/last', { method: 'DELETE' }),
+  setHat: (mlbTeam: string | null) => call<{ ok: true }>('/draft/hat', { method: 'POST', body: JSON.stringify({ mlbTeam }) }),
   teams: () => call<Team[]>('/teams'),
   roster: (teamId: string, season = 2026) =>
     call<{ season: number; teamId: string; slots: RosterSlot[] }>(`/teams/${teamId}/roster?season=${season}`),

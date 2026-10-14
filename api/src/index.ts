@@ -106,8 +106,12 @@ async function draftState(env: Env, yr: number) {
        FROM team t LEFT JOIN draft_sale ds ON ds.team_id = t.id AND ds.season = ?1 GROUP BY t.id`,
   ).bind(yr).all<{ teamId: string; spent: number; filled: number }>();
   const { results: sales } = await env.DB.prepare(
-    `SELECT ds.seq, ds.player_id AS playerId, p.name, ds.team_id AS teamId, ds.price, ds.is_keeper AS isKeeper
-       FROM draft_sale ds JOIN player p ON p.id = ds.player_id WHERE ds.season = ? ORDER BY ds.seq`,
+    `SELECT ds.seq, ds.player_id AS playerId, p.name, ds.team_id AS teamId, ds.price, ds.is_keeper AS isKeeper,
+            k.year AS keeperYear, rs.slot
+       FROM draft_sale ds JOIN player p ON p.id = ds.player_id
+       LEFT JOIN keeper k ON k.season = ds.season AND k.player_id = ds.player_id
+       LEFT JOIN roster_slot rs ON rs.season = ds.season AND rs.player_id = ds.player_id
+      WHERE ds.season = ? ORDER BY ds.seq`,
   ).bind(yr).all();
   const hat = await (await room(env).fetch('https://room/hat')).json<{ mlbTeam: string | null }>();
   return {
@@ -117,6 +121,39 @@ async function draftState(env: Env, yr: number) {
     sales,
   };
 }
+
+app.get('/seasons', requireAuth, async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT year, status FROM season ORDER BY year DESC').all();
+  return c.json(results);
+});
+
+// Starts a new live season (the draft). Keeper rollover / "Push to 2027" builds on this later.
+app.post('/seasons', requireAuth, requireCommissioner, async (c) => {
+  const { year } = await c.req.json<{ year: number }>();
+  if (!Number.isInteger(year) || year < 2026 || year > 2100) return c.json({ error: 'Invalid year' }, 400);
+  if (await liveSeason(c.env)) return c.json({ error: 'A season is already live' }, 409);
+  try {
+    await c.env.DB.prepare("INSERT INTO season (year, status) VALUES (?, 'live')").bind(year).run();
+  } catch {
+    return c.json({ error: 'Season already exists' }, 409);
+  }
+  return c.json({ year }, 201);
+});
+
+// Player pool for the draft board. Eligible positions come from player_position for that season,
+// falling back to the player's listed positions (a new season has none until the stats feed fills it).
+app.get('/draft/players', requireAuth, async (c) => {
+  const yr = season(c.req.query('season'));
+  const { results } = await c.env.DB.prepare(
+    `SELECT p.id, p.name, p.mlb_team AS mlbTeam, p.pos, p.pos2,
+            (SELECT group_concat(position) FROM player_position pp WHERE pp.player_id = p.id AND pp.season = ?) AS positions
+       FROM player p ORDER BY p.name`,
+  ).bind(yr).all<{ pos: string; pos2: string | null; positions: string | null }>();
+  return c.json(results.map((r) => ({
+    ...r,
+    positions: (r.positions ?? [r.pos, r.pos2].filter(Boolean).join(',')).split(',').filter(Boolean),
+  })));
+});
 
 app.get('/draft/state', requireAuth, async (c) => c.json(await draftState(c.env, season(c.req.query('season')))));
 

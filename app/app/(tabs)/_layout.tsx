@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Image, Modal, Pressable, Text, View } from 'react-native';
-import { Redirect, Tabs } from 'expo-router';
+import { Redirect, Tabs, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/auth';
 import { FONT, THEMES, useTheme, type ThemeName } from '../../src/theme';
@@ -18,6 +18,7 @@ function Header() {
   const { t, name, setTheme } = useTheme();
   const { signOut } = useAuth();
   const [open, setOpen] = useState(false);
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   return (
     <View style={{ paddingTop: insets.top + 6, paddingBottom: 8, paddingHorizontal: 16, backgroundColor: t.panel, borderBottomColor: t.line, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -38,6 +39,9 @@ function Header() {
                 </Pressable>
               ))}
             </View>
+            <Pressable onPress={() => { setOpen(false); router.push('/draft'); }} style={{ marginBottom: 14 }}>
+              <Text style={{ color: t.text, fontFamily: FONT.bodyBold, fontSize: 15 }}>Draft Room (TV board)</Text>
+            </Pressable>
             <Pressable onPress={() => { setOpen(false); signOut(); }}>
               <Text style={{ color: t.red, fontFamily: FONT.bodyBold, fontSize: 15 }}>Sign out</Text>
             </Pressable>

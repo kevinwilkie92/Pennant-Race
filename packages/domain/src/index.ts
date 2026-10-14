@@ -135,3 +135,44 @@ export function canFillSlot(slot: string, positions: string[]): boolean {
     default: return positions.includes(s);
   }
 }
+
+// ------------------------------------------------------------ draft roster auto-fill
+
+export type SlotInput = { playerId: number; positions: string[]; slot?: string | null };
+
+const BENCH_LABELS = ROSTER_LABELS.filter((l) => l.startsWith('B'));
+const PIT_LABELS = (prefix: 'SP' | 'RP') => ROSTER_LABELS.filter((l) => l.startsWith(prefix));
+
+/**
+ * Assigns each player to a roster label. Players that already carry a slot keep it (archived seasons);
+ * the rest are filled in draft order: exact position slot, then IF (infielders), then Util (any hitter),
+ * then bench. Players who don't fit anywhere (full roster) are omitted.
+ */
+export function assignSlots(players: SlotInput[]): Map<number, string> {
+  const out = new Map<number, string>();
+  const used = new Set<string>();
+  for (const p of players) if (p.slot) { out.set(p.playerId, p.slot); used.add(p.slot); }
+
+  const free = (labels: readonly string[]) => labels.find((l) => !used.has(l));
+  for (const p of players) {
+    if (p.slot) continue;
+    const pos = p.positions;
+    const isP = pos.some((x) => x === 'SP' || x === 'RP' || x === 'P');
+    const candidates: (string | undefined)[] = [];
+    if (isP) {
+      const order = pos.includes('SP') ? ['SP', 'RP'] : ['RP', 'SP'];
+      for (const g of order) if (pos.includes(g) || g === order[0]) candidates.push(free(PIT_LABELS(g as 'SP' | 'RP')));
+    } else {
+      for (const x of pos) {
+        if (x === 'OF') candidates.push(free(['OF1', 'OF2', 'OF3', 'OF4']));
+        else if (['C', '1B', '2B', '3B', 'SS'].includes(x)) candidates.push(free([x]));
+      }
+      if (pos.some((x) => ['1B', '2B', '3B', 'SS'].includes(x))) candidates.push(free(['IF']));
+      candidates.push(free(['Util1', 'Util2']));
+    }
+    candidates.push(free(BENCH_LABELS));
+    const label = candidates.find(Boolean);
+    if (label) { out.set(p.playerId, label); used.add(label); }
+  }
+  return out;
+}
