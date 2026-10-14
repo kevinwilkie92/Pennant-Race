@@ -94,5 +94,5 @@ login, My Team lineup, League team list/rosters, theme switcher (dark/light/broa
 the phone draft companion, the keepers picker + season push, and the TV draft board (hat draw, award card with bid validation, money rail, rosters, undrafted, log, undo, live sync).
 
 Next, roughly in order: Matchup + daily points (needs an MLB stats feed), Players/free agents and
-waivers/trades, standings and playoff bracket, chat, the draft room UIs (TV board + phone companion),
-Draft-room edits to archived results,, team logo upload (R2), Google/Apple sign-in.
+waivers/trades, standings and the playoff bracket, chat, editing archived draft results, team logo upload (R2),
+Google/Apple sign-in, and a "currently nominated player" strip for the phone companion.
