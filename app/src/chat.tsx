@@ -1,12 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { api, type ChatMessage, type DmConversation } from './api';
+import { api, type ChatGroup, type ChatMessage, type DmConversation, type GroupConversation } from './api';
 import { ChatOverlay } from './ChatOverlay';
 import { useAuth } from './auth';
 import { useRealtime } from './realtime';
 import { useTeams } from './teams';
 
-export type Scope = 'league' | string;                       // 'league', or the other team's id for a direct-message thread
-export type View = { kind: 'league' } | { kind: 'dms' } | { kind: 'dm'; team: string };
+export type Scope = 'league' | string;                       // 'league', the other team's id (direct message), or `group:<id>`
+export type View = { kind: 'league' } | { kind: 'dms' } | { kind: 'dm'; team: string } | { kind: 'group'; id: number } | { kind: 'newgroup' };
+export const groupScope = (id: number) => `group:${id}`;
+export const groupIdOf = (scope: Scope) => (scope.startsWith('group:') ? Number(scope.slice(6)) : null);
 export type Thread = { messages: ChatMessage[]; hasMore: boolean; loaded: boolean };
 const EMPTY: Thread = { messages: [], hasMore: false, loaded: false };
 const TYPING_TTL = 4000, TYPING_SEND_GAP = 2500;
@@ -14,13 +16,16 @@ const TYPING_TTL = 4000, TYPING_SEND_GAP = 2500;
 export type ChatState = {
   open: boolean; setOpen: (v: boolean) => void; view: View; setView: (v: View) => void;
   unread: { league: number; mentions: number; dm: number; total: number };
-  league: Thread & { pinned: ChatMessage | null }; threads: Record<string, Thread>; convs: DmConversation[];
+  league: Thread & { pinned: ChatMessage | null }; threads: Record<string, Thread>; convs: DmConversation[]; groups: GroupConversation[];
   emoji: string[]; connected: boolean; loading: boolean; myTeam: string | null;
   typingIn: (scope: Scope) => string[];                      // team ids currently typing there
   send: (scope: Scope, b: { body?: string; replyTo?: number; imageKey?: string }) => Promise<void>;
   edit: (id: number, body: string) => Promise<void>;
   react: (id: number, emoji: string) => Promise<void>; pin: (id: number, pinned: boolean) => Promise<void>; remove: (id: number) => Promise<void>;
-  loadOlder: (scope: Scope) => Promise<void>; ensureThread: (team: string) => Promise<void>; sendTyping: (scope: Scope) => void;
+  loadOlder: (scope: Scope) => Promise<void>; ensureThread: (scope: Scope) => Promise<void>; sendTyping: (scope: Scope) => void;
+  groupFor: (id: number) => ChatGroup | undefined;
+  createGroup: (teamIds: string[], name?: string) => Promise<number>;
+  renameGroup: (id: number, name: string) => Promise<void>; addToGroup: (id: number, teamId: string) => Promise<void>; leaveGroup: (id: number) => Promise<void>;
 };
 const Ctx = createContext<ChatState | null>(null);
 export const useChat = () => useContext(Ctx)!;
@@ -41,6 +46,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [league, setLeague] = useState<Thread & { pinned: ChatMessage | null }>({ ...EMPTY, pinned: null });
   const [threads, setThreads] = useState<Record<string, Thread>>({});
   const [convs, setConvs] = useState<DmConversation[]>([]);
+  const [groups, setGroups] = useState<GroupConversation[]>([]);
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
   const [unread, setUnread] = useState({ league: 0, mentions: 0, dm: 0 });
   const [typing, setTyping] = useState<Record<string, Record<string, number>>>({});
   const [, tick] = useState(0);
@@ -50,32 +57,42 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const leagueRef = useRef(league); leagueRef.current = league;
   const lastTypingSent = useRef(0);
 
-  const scopeOf = useCallback((m: ChatMessage): Scope => (m.toTeam ? (m.teamId === myTeam ? m.toTeam : m.teamId) : 'league'), [myTeam]);
-  const watching = (scope: Scope) => openRef.current && (scope === 'league' ? viewRef.current.kind === 'league' : viewRef.current.kind === 'dm' && (viewRef.current as { team: string }).team === scope);
+  const scopeOf = useCallback((m: ChatMessage): Scope => (m.groupId ? groupScope(m.groupId) : m.toTeam ? (m.teamId === myTeam ? m.toTeam : m.teamId) : 'league'), [myTeam]);
+  const watching = (scope: Scope) => openRef.current && (scope === 'league' ? viewRef.current.kind === 'league' : (viewRef.current.kind === 'dm' && (viewRef.current as { team: string }).team === scope) || (viewRef.current.kind === 'group' && groupScope((viewRef.current as { id: number }).id) === scope));
 
+  // Every private conversation: one-to-one and group. The badge counts both.
   const loadDms = useCallback(async () => {
-    try { const r = await api.chatDms(); setConvs(r.conversations); setUnread((u) => ({ ...u, dm: r.totalUnread })); } catch { /* keep */ }
+    try {
+      const [d, g] = await Promise.all([api.chatDms(), api.chatGroups()]);
+      setConvs(d.conversations); setGroups(g.groups); setGroupsLoaded(true);
+      setUnread((u) => ({ ...u, dm: d.totalUnread + g.totalUnread }));
+    } catch { /* keep */ }
   }, []);
 
   const markRead = useCallback((scope: Scope, list: ChatMessage[]) => {
     const last = list.length ? list[list.length - 1].id : 0;
     if (!last) return;
     if (scope === 'league') { api.chatRead(last).catch(() => {}); setUnread((u) => ({ ...u, league: 0, mentions: 0 })); }
+    else if (groupIdOf(scope) != null) { api.chatGroupRead(groupIdOf(scope)!, last).then(loadDms).catch(() => {}); }
     else { api.chatDmRead(scope, last).then(loadDms).catch(() => {}); }
   }, [loadDms]);
 
   // Initial load (and reset on sign-out).
   useEffect(() => {
-    if (!userId) { setLeague({ ...EMPTY, pinned: null }); setThreads({}); setConvs([]); setUnread({ league: 0, mentions: 0, dm: 0 }); setLoading(true); return; }
+    if (!userId) { setLeague({ ...EMPTY, pinned: null }); setThreads({}); setConvs([]); setGroups([]); setGroupsLoaded(false); setUnread({ league: 0, mentions: 0, dm: 0 }); setLoading(true); return; }
     setLoading(true);
     api.chatUnread().then((r) => setUnread({ league: r.count, mentions: r.mentions, dm: r.dm })).catch(() => {});
     loadDms();
     api.chat().then((r) => { setLeague({ messages: r.messages, hasMore: r.hasMore, loaded: true, pinned: r.pinned }); setEmoji(r.emoji); }).catch(() => {}).finally(() => setLoading(false));
   }, [userId, loadDms]);
 
-  const ensureThread = useCallback(async (team: string) => {
-    if (threadsRef.current[team]?.loaded) return;
-    try { const r = await api.chatDm(team); setThreads((t) => ({ ...t, [team]: { messages: r.messages, hasMore: r.hasMore, loaded: true } })); } catch { /* shown empty */ }
+  const ensureThread = useCallback(async (scope: Scope) => {
+    if (threadsRef.current[scope]?.loaded) return;
+    try {
+      const gid = groupIdOf(scope);
+      const r = gid != null ? await api.chatGroup(gid) : await api.chatDm(scope);
+      setThreads((t) => ({ ...t, [scope]: { messages: r.messages, hasMore: r.hasMore, loaded: true } }));
+    } catch { /* shown empty */ }
   }, []);
 
   // Live events.
@@ -102,7 +119,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     } else if (ev.type === 'chat-edit') {
       const m = ev.message as ChatMessage;
       applyAll((x) => (x.id === m.id ? m : x));
-      if (m.toTeam) loadDms();
+      if (m.toTeam || m.groupId) loadDms();
     } else if (ev.type === 'chat-react') {
       applyAll((x) => (x.id === ev.id ? { ...x, reactions: ev.reactions as ChatMessage['reactions'] } : x));
     } else if (ev.type === 'chat-pin') {
@@ -112,8 +129,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       setLeague((l) => ({ ...l, messages: l.messages.filter((x) => x.id !== ev.id), pinned: l.pinned && l.pinned.id === ev.id ? null : l.pinned }));
       setThreads((t) => Object.fromEntries(Object.entries(t).map(([k, th]) => [k, { ...th, messages: th.messages.filter((x) => x.id !== ev.id) }])));
       loadDms();
+    } else if (ev.type === 'chat-group') {
+      loadDms();
     } else if (ev.type === 'typing') {
-      const scope = ev.scope === 'league' ? 'league' : (ev.teamId as string);
+      const scope = ev.scope === 'league' ? 'league' : ev.scope === 'group' ? groupScope(ev.group as number) : (ev.teamId as string);
       setTyping((t) => ({ ...t, [scope]: { ...(t[scope] ?? {}), [ev.teamId as string]: Date.now() + TYPING_TTL } }));
     }
   }), [subscribe, myTeam, scopeOf, markRead, loadDms]);
@@ -135,15 +154,20 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     if (!open) return;
     if (view.kind === 'league') markRead('league', leagueRef.current.messages);
     else if (view.kind === 'dm') ensureThread(view.team).then(() => markRead(view.team, threadsRef.current[view.team]?.messages ?? []));
+    else if (view.kind === 'group') { const sc = groupScope(view.id); ensureThread(sc).then(() => markRead(sc, threadsRef.current[sc]?.messages ?? [])); }
     else loadDms();
-  }, [open, view.kind === 'dm' ? view.team : view.kind]);
+  }, [open, view.kind === 'dm' ? view.team : view.kind === 'group' ? view.id : view.kind]);
+
+  // If the group you are looking at disappears from your list (you left it), go back to the list.
+  useEffect(() => { if (groupsLoaded && view.kind === 'group' && !groups.some((g) => g.id === (view as { id: number }).id)) setView({ kind: 'dms' }); }, [groups, groupsLoaded, view]);
 
   const state = useMemo<ChatState>(() => ({
-    open, setOpen, view, setView, league, threads, convs, emoji, connected, loading, myTeam,
+    open, setOpen, view, setView, league, threads, convs, groups, emoji, connected, loading, myTeam,
     unread: { ...unread, total: unread.league + unread.dm },
     typingIn: (scope) => Object.entries(typing[scope] ?? {}).filter(([, exp]) => exp > Date.now()).map(([id]) => id),
     send: async (scope, b) => {
-      const m = await api.chatSend({ ...b, toTeam: scope === 'league' ? undefined : scope });
+      const gid = groupIdOf(scope);
+      const m = await api.chatSend({ ...b, toTeam: scope === 'league' || gid != null ? undefined : scope, groupId: gid ?? undefined });
       if (scope === 'league') setLeague((l) => ({ ...l, messages: merge(l.messages, m) }));
       else { setThreads((t) => ({ ...t, [scope]: { ...(t[scope] ?? EMPTY), loaded: true, messages: merge(t[scope]?.messages ?? [], m) } })); loadDms(); }
     },
@@ -162,18 +186,24 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
         setLeague((l) => ({ ...l, messages: [...r.messages, ...l.messages], hasMore: r.hasMore }));
       } else {
         const first = threadsRef.current[scope]?.messages[0]; if (!first) return;
-        const r = await api.chatDm(scope, first.id);
+        const gid = groupIdOf(scope);
+        const r = gid != null ? await api.chatGroup(gid, first.id) : await api.chatDm(scope, first.id);
         setThreads((t) => ({ ...t, [scope]: { ...t[scope], messages: [...r.messages, ...t[scope].messages], hasMore: r.hasMore } }));
       }
     },
     ensureThread,
+    groupFor: (id) => groups.find((g) => g.id === id),
+    createGroup: async (teamIds, name) => { const r = await api.chatGroupCreate(teamIds, name); await loadDms(); return r.group.id; },
+    renameGroup: async (id, name) => { await api.chatGroupRename(id, name); await loadDms(); },
+    addToGroup: async (id, teamId) => { await api.chatGroupAdd(id, teamId); await loadDms(); },
+    leaveGroup: async (id) => { await api.chatGroupLeave(id); setThreads((t) => { const { [groupScope(id)]: _g, ...rest } = t; return rest; }); await loadDms(); },
     sendTyping: (scope) => {
       const now = Date.now();
       if (now - lastTypingSent.current < TYPING_SEND_GAP) return;
       lastTypingSent.current = now;
       wsSend({ type: 'typing', scope });
     },
-  }), [open, view, league, threads, convs, emoji, connected, loading, myTeam, unread, typing, ensureThread, wsSend, loadDms]);
+  }), [open, view, league, threads, convs, groups, emoji, connected, loading, myTeam, unread, typing, ensureThread, wsSend, loadDms]);
 
   return <Ctx.Provider value={state}>{children}<ChatOverlay /></Ctx.Provider>;
 }

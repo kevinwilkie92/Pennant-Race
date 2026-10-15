@@ -1,5 +1,5 @@
 import type { Hono } from 'hono';
-import { parseMentions } from '@pennant/domain';
+import { MAX_GROUP, cleanGroupName, memberKey, parseMentions, validateGroup } from '@pennant/domain';
 import { requireAuth, requireCommissioner } from './auth';
 import type { ChatMessage } from './draft-room';
 import { broadcast } from './realtime';
@@ -16,18 +16,18 @@ const UPLOAD_LIMIT = { count: 10, windowMs: 60_000 };
 const SNIPPET = 140;
 
 type Row = {
-  id: number; teamId: string; toTeam: string | null; body: string; createdAt: number; editedAt: number | null; pinned: number;
+  id: number; teamId: string; toTeam: string | null; groupId: number | null; body: string; createdAt: number; editedAt: number | null; pinned: number;
   reactions: string; imageKey: string | null; mentions: string; replyId: number | null;
   rId: number | null; rTeam: string | null; rBody: string | null; rImage: string | null;
 };
-const COLS = `m.id, m.team_id AS teamId, m.to_team AS toTeam, m.body, m.created_at AS createdAt, m.edited_at AS editedAt, m.pinned,
+const COLS = `m.id, m.team_id AS teamId, m.to_team AS toTeam, m.group_id AS groupId, m.body, m.created_at AS createdAt, m.edited_at AS editedAt, m.pinned,
   m.reactions_json AS reactions, m.image_key AS imageKey, m.mentions_json AS mentions, m.reply_to AS replyId,
   r.id AS rId, r.team_id AS rTeam, r.body AS rBody, r.image_key AS rImage`;
 const FROM = 'chat_message m LEFT JOIN chat_message r ON r.id = m.reply_to';
 
 const json = <T>(s: string, fallback: T): T => { try { return JSON.parse(s || ''); } catch { return fallback; } };
 const toMessage = (r: Row): ChatMessage => ({
-  id: r.id, teamId: r.teamId, toTeam: r.toTeam, body: r.body, createdAt: r.createdAt, editedAt: r.editedAt, pinned: !!r.pinned,
+  id: r.id, teamId: r.teamId, toTeam: r.toTeam, groupId: r.groupId, body: r.body, createdAt: r.createdAt, editedAt: r.editedAt, pinned: !!r.pinned,
   reactions: json(r.reactions, {}), imageKey: r.imageKey, mentions: json(r.mentions, []),
   replyTo: r.replyId == null ? null
     : r.rId == null ? { id: r.replyId, deleted: true }
@@ -38,10 +38,39 @@ const one = async (env: Env, id: number) => {
   const r = await env.DB.prepare(`SELECT ${COLS} FROM ${FROM} WHERE m.id = ?`).bind(id).first<Row>();
   return r ? toMessage(r) : null;
 };
-/** Who may see a message: everyone for the league room, only the two teams for a direct message. */
-const audience = (m: Pick<ChatMessage, 'teamId' | 'toTeam'>) => (m.toTeam ? [m.teamId, m.toTeam] : undefined);
-const canSee = (m: Pick<ChatMessage, 'teamId' | 'toTeam'>, team: string | null) => !m.toTeam || m.teamId === team || m.toTeam === team;
+type Scoped = Pick<ChatMessage, 'id' | 'teamId' | 'toTeam' | 'groupId'>;
+const groupMembers = async (env: Env, id: number) => (await env.DB.prepare('SELECT team_id AS t FROM chat_group_member WHERE group_id = ?').bind(id).all<{ t: string }>()).results.map((r) => r.t);
+/** Who gets a message live: everyone for the league room, the two teams for a direct message, the members for a group. */
+const audience = async (env: Env, m: Scoped) => (m.groupId ? groupMembers(env, m.groupId) : m.toTeam ? [m.teamId, m.toTeam] : undefined);
+/** Who may read it: everyone for the league room, the two teams for a direct message, members for a group (from when they joined). */
+async function canSee(env: Env, m: Scoped, team: string | null): Promise<boolean> {
+  if (m.groupId) {
+    if (!team) return false;
+    const mem = await env.DB.prepare('SELECT from_id AS f FROM chat_group_member WHERE group_id = ? AND team_id = ?').bind(m.groupId, team).first<{ f: number }>();
+    return !!mem && m.id > mem.f;
+  }
+  return !m.toTeam || m.teamId === team || m.toTeam === team;
+}
+const isPrivate = (m: Pick<ChatMessage, 'toTeam' | 'groupId'>) => !!m.toTeam || !!m.groupId;
+/** Keeps the realtime room's copy of a group's members current (it uses it to route typing signals). */
+const syncGroup = async (env: Env, id: number, teams: string[] | null) => { await env.DRAFT_ROOM.get(env.DRAFT_ROOM.idFromName('league')).fetch('https://room/group-members', { method: 'POST', body: JSON.stringify({ id, teams }) }); };
 const allTeamIds = async (env: Env) => (await env.DB.prepare('SELECT id FROM team').all<{ id: string }>()).results.map((t) => t.id);
+
+type GroupInfo = { id: number; name: string | null; createdBy: string; members: string[] };
+const groupInfo = async (env: Env, id: number): Promise<GroupInfo | null> => {
+  const g = await env.DB.prepare('SELECT id, name, created_by AS createdBy FROM chat_group WHERE id = ?').bind(id).first<{ id: number; name: string | null; createdBy: string }>();
+  return g ? { ...g, members: (await groupMembers(env, id)).sort() } : null;
+};
+const isMember = async (env: Env, id: number, team: string | null) => !!team && !!(await env.DB.prepare('SELECT 1 FROM chat_group_member WHERE group_id = ? AND team_id = ?').bind(id, team).first());
+/** Messages in my groups from other teams that I haven't read (and joined before). */
+async function groupUnread(env: Env, userId: string, team: string | null): Promise<number> {
+  if (!team) return 0;
+  return (await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM chat_message m JOIN chat_group_member gm ON gm.group_id = m.group_id AND gm.team_id = ?1
+      WHERE m.group_id IS NOT NULL AND m.team_id != ?1 AND m.id > gm.from_id
+        AND m.id > COALESCE((SELECT last_id FROM group_read WHERE user_id = ?2 AND group_id = m.group_id), 0)`,
+  ).bind(team, userId).first<{ n: number }>())?.n ?? 0;
+}
 
 export function registerChat(app: App) {
   const page = async (c: { req: { query: (k: string) => string | undefined }; env: Env }, where: string, binds: unknown[]) => {
@@ -55,8 +84,8 @@ export function registerChat(app: App) {
   // ------------------------------------------------------------------ league room
   // Newest page by default; `before` pages backwards. Returned oldest → newest so the client can just render them.
   app.get('/chat', requireAuth, async (c) => {
-    const p = await page(c, 'm.to_team IS NULL', []);
-    const pinned = await c.env.DB.prepare(`SELECT ${COLS} FROM ${FROM} WHERE m.pinned = 1 AND m.to_team IS NULL ORDER BY m.id DESC LIMIT 1`).first<Row>();
+    const p = await page(c, 'm.to_team IS NULL AND m.group_id IS NULL', []);
+    const pinned = await c.env.DB.prepare(`SELECT ${COLS} FROM ${FROM} WHERE m.pinned = 1 AND m.to_team IS NULL AND m.group_id IS NULL ORDER BY m.id DESC LIMIT 1`).first<Row>();
     return c.json({ ...p, pinned: pinned ? toMessage(pinned) : null, emoji: EMOJI });
   });
 
@@ -95,18 +124,139 @@ export function registerChat(app: App) {
     return c.json({ ok: true });
   });
 
+
+  // ------------------------------------------------------------------ group conversations
+  // Three to eight teams. Only members can read or write; the commissioner has no special view. Someone added later sees
+  // only what is said after they join. Creating a group with exactly the same teams as an existing one opens that one.
+  app.post('/chat/groups', requireAuth, async (c) => {
+    const u = c.get('user');
+    if (!u.teamId) return c.json({ error: 'Your account isn’t linked to a team' }, 403);
+    const b = await c.req.json<{ teamIds?: unknown; name?: unknown }>().catch(() => ({} as { teamIds?: unknown; name?: unknown }));
+    const check = validateGroup(u.teamId, b.teamIds, await allTeamIds(c.env));
+    if (!check.ok) return c.json({ error: check.reason }, 400);
+    const nm = cleanGroupName(b.name);
+    if (!nm.ok) return c.json({ error: nm.reason }, 400);
+
+    const key = memberKey(check.members);
+    const existing = await c.env.DB.prepare('SELECT id FROM chat_group WHERE member_key = ?').bind(key).first<{ id: number }>();
+    if (existing) return c.json({ group: await groupInfo(c.env, existing.id), existing: true });
+
+    const made = await c.env.DB.prepare('INSERT INTO chat_group (name, created_by, created_at, member_key) VALUES (?, ?, ?, ?)').bind(nm.name, u.teamId, Date.now(), key).run();
+    const id = Number(made.meta.last_row_id);
+    await c.env.DB.batch(check.members.map((t) => c.env.DB.prepare('INSERT INTO chat_group_member (group_id, team_id, from_id) VALUES (?, ?, 0)').bind(id, t)));
+    await syncGroup(c.env, id, check.members);
+    const group = (await groupInfo(c.env, id))!;
+    await broadcast(c.env, { type: 'chat-group', id }, group.members);
+    return c.json({ group, existing: false }, 201);
+  });
+
+  app.get('/chat/groups', requireAuth, async (c) => {
+    const u = c.get('user');
+    if (!u.teamId) return c.json({ groups: [] });
+    const { results } = await c.env.DB.prepare(
+      `SELECT gm.group_id AS id, gm.from_id AS fromId,
+              (SELECT MAX(m.id) FROM chat_message m WHERE m.group_id = gm.group_id AND m.id > gm.from_id) AS lastId
+         FROM chat_group_member gm WHERE gm.team_id = ?`,
+    ).bind(u.teamId).all<{ id: number; fromId: number; lastId: number | null }>();
+    const reads = new Map((await c.env.DB.prepare('SELECT group_id AS id, last_id AS lastId FROM group_read WHERE user_id = ?').bind(u.id).all<{ id: number; lastId: number }>()).results.map((r) => [r.id, r.lastId]));
+    const groups = [];
+    for (const r of results) {
+      const info = (await groupInfo(c.env, r.id))!;
+      const last = r.lastId ? await one(c.env, r.lastId) : null;
+      const unread = (await c.env.DB.prepare('SELECT COUNT(*) AS n FROM chat_message WHERE group_id = ? AND team_id != ? AND id > ?').bind(r.id, u.teamId, Math.max(r.fromId, reads.get(r.id) ?? 0)).first<{ n: number }>())?.n ?? 0;
+      groups.push({ ...info, unread, last: last ? { id: last.id, teamId: last.teamId, fromMe: last.teamId === u.teamId, body: last.body.slice(0, 80), hasImage: !!last.imageKey, createdAt: last.createdAt } : null, sortKey: last?.createdAt ?? 0 });
+    }
+    groups.sort((a, b) => b.sortKey - a.sortKey || b.id - a.id);
+    return c.json({ groups: groups.map(({ sortKey: _k, ...g }) => g), totalUnread: groups.reduce((n, g) => n + g.unread, 0) });
+  });
+
+  app.get('/chat/groups/:id', requireAuth, async (c) => {
+    const id = Number(c.req.param('id')), team = c.get('user').teamId;
+    const mem = team ? await c.env.DB.prepare('SELECT from_id AS f FROM chat_group_member WHERE group_id = ? AND team_id = ?').bind(id, team).first<{ f: number }>() : null;
+    if (!mem) return c.json({ error: 'Group not found' }, 404);
+    const p = await page(c, 'm.group_id = ?1 AND m.id > ?2', [id, mem.f]);
+    return c.json({ group: await groupInfo(c.env, id), ...p, emoji: EMOJI });
+  });
+
+  app.patch('/chat/groups/:id', requireAuth, async (c) => {
+    const id = Number(c.req.param('id'));
+    if (!(await isMember(c.env, id, c.get('user').teamId))) return c.json({ error: 'Group not found' }, 404);
+    const nm = cleanGroupName((await c.req.json<{ name?: unknown }>().catch(() => ({} as { name?: unknown }))).name);
+    if (!nm.ok) return c.json({ error: nm.reason }, 400);
+    await c.env.DB.prepare('UPDATE chat_group SET name = ? WHERE id = ?').bind(nm.name, id).run();
+    const group = (await groupInfo(c.env, id))!;
+    await broadcast(c.env, { type: 'chat-group', id }, group.members);
+    return c.json({ group });
+  });
+
+  app.post('/chat/groups/:id/members', requireAuth, async (c) => {
+    const id = Number(c.req.param('id'));
+    if (!(await isMember(c.env, id, c.get('user').teamId))) return c.json({ error: 'Group not found' }, 404);
+    const { teamId } = await c.req.json<{ teamId?: string }>().catch(() => ({} as { teamId?: string }));
+    if (typeof teamId !== 'string' || !(await allTeamIds(c.env)).includes(teamId)) return c.json({ error: 'Unknown team' }, 400);
+    const members = await groupMembers(c.env, id);
+    if (members.includes(teamId)) return c.json({ error: 'Already in the group' }, 409);
+    if (members.length >= MAX_GROUP) return c.json({ error: `A group can have at most ${MAX_GROUP} teams` }, 400);
+    const now = (await c.env.DB.prepare('SELECT COALESCE(MAX(id), 0) AS m FROM chat_message').first<{ m: number }>())?.m ?? 0;
+    await c.env.DB.batch([
+      c.env.DB.prepare('INSERT INTO chat_group_member (group_id, team_id, from_id) VALUES (?, ?, ?)').bind(id, teamId, now),
+      c.env.DB.prepare('UPDATE chat_group SET member_key = ? WHERE id = ?').bind(memberKey([...members, teamId]), id),
+    ]);
+    await syncGroup(c.env, id, [...members, teamId]);
+    const group = (await groupInfo(c.env, id))!;
+    await broadcast(c.env, { type: 'chat-group', id }, group.members);
+    return c.json({ group });
+  });
+
+  // Leave a group. When the last team leaves, the group and its messages are deleted.
+  app.delete('/chat/groups/:id/members/me', requireAuth, async (c) => {
+    const id = Number(c.req.param('id')), team = c.get('user').teamId;
+    if (!team || !(await isMember(c.env, id, team))) return c.json({ error: 'Group not found' }, 404);
+    const before = await groupMembers(c.env, id);
+    const rest = before.filter((t) => t !== team);
+    if (rest.length === 0) {
+      const imgs = (await c.env.DB.prepare('SELECT image_key AS k FROM chat_message WHERE group_id = ? AND image_key IS NOT NULL').bind(id).all<{ k: string }>()).results;
+      await c.env.DB.batch([
+        c.env.DB.prepare('DELETE FROM chat_message WHERE group_id = ?').bind(id),
+        c.env.DB.prepare('DELETE FROM chat_group WHERE id = ?').bind(id),     // members and read markers cascade
+        ...imgs.map((i) => c.env.DB.prepare('DELETE FROM chat_upload WHERE key = ?').bind(i.k)),
+      ]);
+      for (const i of imgs) await c.env.LOGOS.delete(`chat/${i.k}`).catch(() => {});
+      await syncGroup(c.env, id, null);
+    } else {
+      await c.env.DB.batch([
+        c.env.DB.prepare('DELETE FROM chat_group_member WHERE group_id = ? AND team_id = ?').bind(id, team),
+        c.env.DB.prepare('UPDATE chat_group SET member_key = ? WHERE id = ?').bind(memberKey(rest), id),
+      ]);
+      await syncGroup(c.env, id, rest);
+    }
+    await broadcast(c.env, { type: 'chat-group', id }, before);       // everyone (including the leaver) refreshes their list
+    return c.json({ ok: true });
+  });
+
+  app.post('/chat/group-read', requireAuth, async (c) => {
+    const u = c.get('user');
+    const { groupId, lastId } = await c.req.json<{ groupId: number; lastId: number }>().catch(() => ({} as { groupId: number; lastId: number }));
+    if (!Number.isInteger(groupId) || !Number.isInteger(lastId) || lastId < 0) return c.json({ error: 'Bad request' }, 400);
+    if (!(await isMember(c.env, groupId, u.teamId))) return c.json({ error: 'Group not found' }, 404);
+    await c.env.DB.prepare('INSERT INTO group_read (user_id, group_id, last_id) VALUES (?, ?, ?) ON CONFLICT(user_id, group_id) DO UPDATE SET last_id = MAX(last_id, excluded.last_id)').bind(u.id, groupId, lastId).run();
+    return c.json({ ok: true });
+  });
+
   // ------------------------------------------------------------------ unread
   app.get('/chat/unread', requireAuth, async (c) => {
     const u = c.get('user');
     const last = (await c.env.DB.prepare('SELECT last_id AS id FROM chat_read WHERE user_id = ?').bind(u.id).first<{ id: number }>())?.id ?? 0;
     const row = await c.env.DB.prepare(
       `SELECT COUNT(*) AS n, COALESCE(SUM(EXISTS (SELECT 1 FROM json_each(mentions_json) WHERE value = ?2)), 0) AS mentions
-         FROM chat_message WHERE id > ?1 AND team_id != ?2 AND to_team IS NULL`,
+         FROM chat_message WHERE id > ?1 AND team_id != ?2 AND to_team IS NULL AND group_id IS NULL`,
     ).bind(last, u.teamId ?? '').first<{ n: number; mentions: number }>();
     const dm = await c.env.DB.prepare(
       `SELECT COUNT(*) AS n FROM chat_message m WHERE m.to_team = ?1 AND m.id > COALESCE((SELECT last_id FROM dm_read WHERE user_id = ?2 AND partner = m.team_id), 0)`,
     ).bind(u.teamId ?? '', u.id).first<{ n: number }>();
-    return c.json({ count: row?.n ?? 0, mentions: row?.mentions ?? 0, dm: dm?.n ?? 0 });
+    const grp = await groupUnread(c.env, u.id, u.teamId);
+    // "dm" is every private conversation: one-to-one and group.
+    return c.json({ count: row?.n ?? 0, mentions: row?.mentions ?? 0, dm: (dm?.n ?? 0) + grp });
   });
 
   app.post('/chat/read', requireAuth, async (c) => {
@@ -160,18 +310,24 @@ export function registerChat(app: App) {
   app.post('/chat', requireAuth, async (c) => {
     const u = c.get('user');
     if (!u.teamId) return c.json({ error: 'Your account isn’t linked to a team' }, 403);
-    const b = await c.req.json<{ body?: string; replyTo?: number; toTeam?: string; imageKey?: string }>().catch(() => ({} as { body?: string }));
+    const b = await c.req.json<{ body?: string; replyTo?: number; toTeam?: string; groupId?: number; imageKey?: string }>().catch(() => ({} as { body?: string }));
     const text = cleanText(b.body);
     const { replyTo, toTeam, imageKey } = b as { replyTo?: number; toTeam?: string; imageKey?: string };
+    const groupId = (b as { groupId?: number }).groupId;
     if (!text && !imageKey) return c.json({ error: 'Write something first' }, 400);
     if ([...text].length > MAX_BODY) return c.json({ error: `Messages are limited to ${MAX_BODY} characters` }, 400);
 
     const teams = await allTeamIds(c.env);
     if (toTeam != null && (toTeam === u.teamId || !teams.includes(toTeam))) return c.json({ error: 'Pick another team to message' }, 400);
 
+    if (groupId != null) {
+      if (toTeam != null || !Number.isInteger(groupId)) return c.json({ error: 'Pick one conversation' }, 400);
+      if (!(await c.env.DB.prepare('SELECT 1 FROM chat_group_member WHERE group_id = ? AND team_id = ?').bind(groupId, u.teamId).first())) return c.json({ error: 'You aren’t in that group' }, 403);
+    }
     if (replyTo != null) {
       const orig = await one(c.env, Number(replyTo));
-      const sameThread = orig && (toTeam ? orig.toTeam && ((orig.teamId === u.teamId && orig.toTeam === toTeam) || (orig.teamId === toTeam && orig.toTeam === u.teamId)) : !orig.toTeam);
+      const sameThread = orig && (groupId != null ? orig.groupId === groupId
+        : toTeam ? orig.toTeam && !orig.groupId && ((orig.teamId === u.teamId && orig.toTeam === toTeam) || (orig.teamId === toTeam && orig.toTeam === u.teamId)) : !orig.toTeam && !orig.groupId);
       if (!sameThread) return c.json({ error: 'You can only reply within the same conversation' }, 400);
     }
     if (imageKey) {
@@ -183,31 +339,31 @@ export function registerChat(app: App) {
     const recent = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM chat_message WHERE team_id = ? AND created_at > ?').bind(u.teamId, now - RATE_LIMIT.windowMs).first<{ n: number }>();
     if ((recent?.n ?? 0) >= RATE_LIMIT.count) return c.json({ error: 'Slow down — too many messages at once' }, 429);
 
-    const mentions = toTeam ? [] : parseMentions(text, teams, u.teamId);       // @mentions are for the league room
+    const mentions = toTeam || groupId != null ? [] : parseMentions(text, teams, u.teamId);       // @mentions are for the league room
     const stmts = [
-      c.env.DB.prepare('INSERT INTO chat_message (team_id, to_team, body, pinned, reactions_json, created_at, reply_to, image_key, mentions_json) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)')
-        .bind(u.teamId, toTeam ?? null, text, '{}', now, replyTo ?? null, imageKey ?? null, JSON.stringify(mentions)),
+      c.env.DB.prepare('INSERT INTO chat_message (team_id, to_team, group_id, body, pinned, reactions_json, created_at, reply_to, image_key, mentions_json) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)')
+        .bind(u.teamId, toTeam ?? null, groupId ?? null, text, '{}', now, replyTo ?? null, imageKey ?? null, JSON.stringify(mentions)),
       ...(imageKey ? [c.env.DB.prepare('UPDATE chat_upload SET used = 1 WHERE key = ?').bind(imageKey)] : []),
     ];
     const res = await c.env.DB.batch(stmts);
     const message = (await one(c.env, Number(res[0].meta.last_row_id)))!;
-    await broadcast(c.env, { type: 'chat', message }, audience(message));
+    await broadcast(c.env, { type: 'chat', message }, await audience(c.env, message));
     return c.json(message, 201);
   });
 
   app.patch('/chat/:id', requireAuth, async (c) => {
     const u = c.get('user');
     const msg = await one(c.env, Number(c.req.param('id')));
-    if (!msg || !canSee(msg, u.teamId)) return c.json({ error: 'Message not found' }, 404);
+    if (!msg || !(await canSee(c.env, msg, u.teamId))) return c.json({ error: 'Message not found' }, 404);
     if (msg.teamId !== u.teamId) return c.json({ error: 'You can only edit your own messages' }, 403);   // not even the commissioner
     const text = cleanText((await c.req.json<{ body?: string }>().catch(() => ({} as { body?: string }))).body);
     if (!text && !msg.imageKey) return c.json({ error: 'A message needs some text (or delete it)' }, 400);
     if ([...text].length > MAX_BODY) return c.json({ error: `Messages are limited to ${MAX_BODY} characters` }, 400);
-    const mentions = msg.toTeam ? [] : parseMentions(text, await allTeamIds(c.env), u.teamId);
+    const mentions = isPrivate(msg) ? [] : parseMentions(text, await allTeamIds(c.env), u.teamId);
     if (text === msg.body) return c.json(msg);                                                          // nothing changed: don't mark it edited
     await c.env.DB.prepare('UPDATE chat_message SET body = ?, mentions_json = ?, edited_at = ? WHERE id = ?').bind(text, JSON.stringify(mentions), Date.now(), msg.id).run();
     const message = (await one(c.env, msg.id))!;
-    await broadcast(c.env, { type: 'chat-edit', message }, audience(message));
+    await broadcast(c.env, { type: 'chat-edit', message }, await audience(c.env, message));
     return c.json(message);
   });
 
@@ -219,13 +375,13 @@ export function registerChat(app: App) {
     const { emoji } = await c.req.json<{ emoji: string }>();
     if (!(EMOJI as readonly string[]).includes(emoji)) return c.json({ error: 'That reaction isn’t available' }, 400);
     const msg = await one(c.env, Number(c.req.param('id')));
-    if (!msg || !canSee(msg, u.teamId)) return c.json({ error: 'Message not found' }, 404);
+    if (!msg || !(await canSee(c.env, msg, u.teamId))) return c.json({ error: 'Message not found' }, 404);
     const set = new Set(msg.reactions[emoji] ?? []);
     if (set.has(u.teamId)) set.delete(u.teamId); else set.add(u.teamId);
     const reactions = { ...msg.reactions };
     if (set.size) reactions[emoji] = [...set]; else delete reactions[emoji];
     await c.env.DB.prepare('UPDATE chat_message SET reactions_json = ? WHERE id = ?').bind(JSON.stringify(reactions), msg.id).run();
-    await broadcast(c.env, { type: 'chat-react', id: msg.id, reactions }, audience(msg));
+    await broadcast(c.env, { type: 'chat-react', id: msg.id, reactions }, await audience(c.env, msg));
     return c.json({ reactions });
   });
 
@@ -234,7 +390,7 @@ export function registerChat(app: App) {
     const id = Number(c.req.param('id'));
     const { pinned } = await c.req.json<{ pinned: boolean }>();
     const msg = await one(c.env, id);
-    if (!msg || msg.toTeam) return c.json({ error: 'Message not found' }, 404);          // a direct message can't be pinned
+    if (!msg || isPrivate(msg)) return c.json({ error: 'Message not found' }, 404);          // a private message can't be pinned
     await c.env.DB.batch([
       c.env.DB.prepare('UPDATE chat_message SET pinned = 0 WHERE pinned = 1'),
       ...(pinned ? [c.env.DB.prepare('UPDATE chat_message SET pinned = 1 WHERE id = ?').bind(id)] : []),
@@ -249,15 +405,15 @@ export function registerChat(app: App) {
     const u = c.get('user');
     const id = Number(c.req.param('id'));
     const msg = await one(c.env, id);
-    if (!msg || !canSee(msg, u.teamId)) return c.json({ error: 'Message not found' }, 404);
-    const allowed = msg.teamId === u.teamId || (u.isCommissioner && !msg.toTeam);
+    if (!msg || !(await canSee(c.env, msg, u.teamId))) return c.json({ error: 'Message not found' }, 404);
+    const allowed = msg.teamId === u.teamId || (u.isCommissioner && !isPrivate(msg));
     if (!allowed) return c.json({ error: 'You can only delete your own messages' }, 403);
     await c.env.DB.prepare('DELETE FROM chat_message WHERE id = ?').bind(id).run();
     if (msg.imageKey) {
       await c.env.DB.prepare('DELETE FROM chat_upload WHERE key = ?').bind(msg.imageKey).run();
       await c.env.LOGOS.delete(`chat/${msg.imageKey}`).catch(() => {});
     }
-    await broadcast(c.env, { type: 'chat-delete', id }, audience(msg));
+    await broadcast(c.env, { type: 'chat-delete', id }, await audience(c.env, msg));
     return c.json({ ok: true });
   });
 }

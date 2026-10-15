@@ -79,3 +79,35 @@ describe('crop maths', () => {
     expect(r.originY).toBeGreaterThan(0);
   });
 });
+
+import { MAX_GROUP, cleanGroupName, groupTitle, memberKey, validateGroup } from '../src';
+
+describe('group conversations', () => {
+  const all = ['AM', 'RC', 'MJ', 'KS', 'DB', 'WW', 'OZ', 'AD', 'MV'];
+  it('needs 3 to 8 known, distinct teams including the creator', () => {
+    expect(validateGroup('AM', ['RC', 'MJ'], all)).toEqual({ ok: true, members: ['AM', 'RC', 'MJ'] });
+    expect(validateGroup('AM', ['RC', 'RC', 'AM', 'MJ'], all)).toEqual({ ok: true, members: ['AM', 'RC', 'MJ'] });
+    expect(validateGroup('AM', ['RC'], all).ok).toBe(false);
+    expect(validateGroup('AM', ['RC', 'NOPE'], all).ok).toBe(false);
+    expect(validateGroup('AM', 'RC', all).ok).toBe(false);
+    expect(validateGroup('AM', [1, 2], all).ok).toBe(false);
+    expect(validateGroup('AM', all.slice(1, MAX_GROUP), all).ok).toBe(true);       // exactly MAX_GROUP with the creator
+    expect(validateGroup('AM', all.slice(1, MAX_GROUP + 1), all).ok).toBe(false);  // one too many
+  });
+  it('memberKey ignores order and repeats', () => {
+    expect(memberKey(['RC', 'AM', 'MJ'])).toBe(memberKey(['MJ', 'AM', 'RC', 'RC']));
+    expect(memberKey(['RC', 'AM', 'MJ'])).not.toBe(memberKey(['RC', 'AM', 'KS']));
+  });
+  it('titles groups by name or by the other teams', () => {
+    expect(groupTitle('Trade talk', ['A', 'B'])).toBe('Trade talk');
+    expect(groupTitle('  ', ['Rally Cats', 'Heroes'])).toBe('Rally Cats, Heroes');
+    expect(groupTitle(null, ['A', 'B', 'C', 'D'])).toBe('A, B +2');
+  });
+  it('cleans group names', () => {
+    expect(cleanGroupName('  Trade   talk ')).toEqual({ ok: true, name: 'Trade talk' });
+    expect(cleanGroupName('   ')).toEqual({ ok: true, name: null });
+    expect(cleanGroupName(null)).toEqual({ ok: true, name: null });
+    expect(cleanGroupName('x'.repeat(41)).ok).toBe(false);
+    expect(cleanGroupName(5).ok).toBe(false);
+  });
+});

@@ -80,3 +80,41 @@ export function zoomAround(c: CropInput, nextZoom: number): { zoom: number; x: n
   const o = clampOffset({ ...c, zoom: z, x: c.view / 2 - cx * s1, y: c.view / 2 - cy * s1 });
   return { zoom: z, ...o };
 }
+
+// ------------------------------------------------------------ group conversations
+
+export const MIN_GROUP = 3;        // fewer than 3 teams is just a direct message
+export const MAX_GROUP = 8;
+export const MAX_GROUP_NAME = 40;
+
+/** Stable identity of a set of teams, for finding "the group with exactly these teams". */
+export const memberKey = (teams: string[]) => [...new Set(teams)].sort().join(',');
+
+export type GroupCheck = { ok: true; members: string[] } | { ok: false; reason: string };
+
+/** The creator plus the teams they picked: known teams only, no repeats, between MIN_GROUP and MAX_GROUP in all. */
+export function validateGroup(creator: string, others: unknown, allTeams: string[]): GroupCheck {
+  if (!Array.isArray(others) || others.some((x) => typeof x !== 'string')) return { ok: false, reason: 'Pick the teams to include' };
+  const members = [...new Set([creator, ...(others as string[])])];
+  if (members.some((t) => !allTeams.includes(t))) return { ok: false, reason: 'Unknown team' };
+  if (members.length < MIN_GROUP) return { ok: false, reason: `A group needs at least ${MIN_GROUP} teams (including yours). Use a direct message for two.` };
+  if (members.length > MAX_GROUP) return { ok: false, reason: `A group can have at most ${MAX_GROUP} teams` };
+  return { ok: true, members };
+}
+
+/** A group's display name: its own name, else the other teams' names ("Rally Cats, Hogan's Heroes +2"). */
+export function groupTitle(name: string | null | undefined, otherNames: string[]): string {
+  const own = name?.trim();
+  if (own) return own;
+  const shown = otherNames.slice(0, 2).join(', ');
+  return otherNames.length > 2 ? `${shown} +${otherNames.length - 2}` : shown || 'Group';
+}
+
+/** Trims and bounds a group name; empty clears it. */
+export function cleanGroupName(raw: unknown): { ok: true; name: string | null } | { ok: false; reason: string } {
+  if (raw === null || raw === undefined) return { ok: true, name: null };
+  if (typeof raw !== 'string') return { ok: false, reason: 'Name must be text' };
+  const name = raw.replace(/\s+/g, ' ').trim();
+  if ([...name].length > MAX_GROUP_NAME) return { ok: false, reason: `Names are limited to ${MAX_GROUP_NAME} characters` };
+  return { ok: true, name: name || null };
+}

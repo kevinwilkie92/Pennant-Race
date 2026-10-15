@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { activeMention, completeMention, splitMentions } from '@pennant/domain';
+import { MAX_GROUP, MAX_GROUP_NAME, MIN_GROUP, activeMention, completeMention, groupTitle, splitMentions } from '@pennant/domain';
 import { api, chatImageUrl, type ChatMessage } from './api';
 import { useAuth } from './auth';
-import { useChat, type Scope } from './chat';
+import { groupIdOf, groupScope, useChat, type Scope } from './chat';
 import { pickImage, shrinkForChat } from './images';
 import { TeamAvatar } from './TeamAvatar';
 import { useTeams } from './teams';
@@ -36,30 +36,59 @@ export function ChatOverlay() {
     );
   };
   const inDm = c.view.kind === 'dm' ? c.view.team : null;
+  const gid = c.view.kind === 'group' ? c.view.id : null;
+  const group = gid != null ? c.groupFor(gid) : undefined;
+  const others = group ? group.members.filter((m) => m !== c.myTeam) : [];
+  const title = group ? groupTitle(group.name, others.map(name)) : '';
+  const deep = inDm || gid != null || c.view.kind === 'newgroup';          // inside a conversation (has a back arrow, no tabs)
+  const [info, setInfo] = useState(false);
 
   return (
     <Modal visible={c.open} animationType="slide" onRequestClose={() => c.setOpen(false)}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: t.bg }}>
         <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: 6, backgroundColor: t.panel, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          {inDm && <Pressable onPress={() => c.setView({ kind: 'dms' })} hitSlop={12}><Display style={{ fontSize: 26 }}>‹</Display></Pressable>}
+          {deep && <Pressable onPress={() => c.setView({ kind: 'dms' })} hitSlop={12}><Display style={{ fontSize: 26 }}>‹</Display></Pressable>}
+          {gid != null && group && <GroupFace members={others} />}
           {inDm && byId.get(inDm) && <TeamAvatar id={inDm} color={byId.get(inDm)!.color} logoKey={byId.get(inDm)!.logoKey} size={30} />}
           <View style={{ flex: 1 }}>
-            <Display style={{ fontSize: 21 }} numberOfLines={1}>{inDm ? name(inDm) : c.view.kind === 'dms' ? 'Direct Messages' : 'League Chat'}</Display>
-            <Body style={{ color: c.connected ? t.green : t.dim2, fontSize: 11 }}>{c.connected ? '● Live' : 'Reconnecting…'}{inDm ? ' · only you two can see this' : ''}</Body>
+            <Display style={{ fontSize: 21 }} numberOfLines={1}>{inDm ? name(inDm) : gid != null ? title : c.view.kind === 'newgroup' ? 'New group' : c.view.kind === 'dms' ? 'Direct Messages' : 'League Chat'}</Display>
+            <Body style={{ color: c.connected ? t.green : t.dim2, fontSize: 11 }}>{c.connected ? '● Live' : 'Reconnecting…'}{inDm ? ' · only you two can see this' : gid != null && group ? ` · ${group.members.length} teams · members only` : ''}</Body>
           </View>
+          {gid != null && group && <Pressable onPress={() => setInfo(true)} hitSlop={12}><Display style={{ fontSize: 13, color: t.dim }}>MEMBERS</Display></Pressable>}
           <Pressable onPress={() => c.setOpen(false)} hitSlop={12}><Display style={{ fontSize: 15, color: t.red }}>CLOSE</Display></Pressable>
         </View>
-        {!inDm && (
+        {!deep && (
           <View style={{ flexDirection: 'row', backgroundColor: t.panel, borderBottomColor: t.line, borderBottomWidth: 1 }}>
             {tab('league', 'League', c.unread.league)}
             {tab('dms', 'Direct', c.unread.dm)}
           </View>
         )}
-        {inDm && <View style={{ height: 1, backgroundColor: t.line }} />}
+        {deep && <View style={{ height: 1, backgroundColor: t.line }} />}
 
         {c.view.kind === 'dms' ? (
           <ScrollView contentContainerStyle={{ padding: 12 }}>
-            {c.convs.length > 0 && <Display style={{ fontSize: 12, letterSpacing: 1.5, color: t.dim, margin: 4 }}>CONVERSATIONS</Display>}
+            <Pressable onPress={() => c.setView({ kind: 'newgroup' })} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: t.radius.card, borderColor: t.red, borderWidth: 1, marginBottom: 12 }}>
+              <Display style={{ fontSize: 22, color: t.red }}>＋</Display>
+              <Display style={{ fontSize: 15, color: t.red }}>NEW GROUP</Display>
+            </Pressable>
+            {c.groups.length > 0 && <Display style={{ fontSize: 12, letterSpacing: 1.5, color: t.dim, margin: 4 }}>GROUPS</Display>}
+            {c.groups.map((g) => {
+              const o = g.members.filter((m) => m !== c.myTeam);
+              return (
+                <Pressable key={g.id} onPress={() => c.setView({ kind: 'group', id: g.id })}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: t.radius.card, backgroundColor: t.card, borderColor: t.line, borderWidth: 1, marginBottom: 8 }}>
+                  <GroupFace members={o} size={40} />
+                  <View style={{ flex: 1 }}>
+                    <Body style={{ fontFamily: g.unread ? FONT.bodyBold : FONT.bodySemi, fontSize: 15 }} numberOfLines={1}>{groupTitle(g.name, o.map(name))}</Body>
+                    <Body style={{ color: g.unread ? t.text : t.dim, fontSize: 13 }} numberOfLines={1}>
+                      {g.last ? `${g.last.fromMe ? 'You' : name(g.last.teamId)}: ${g.last.hasImage && !g.last.body ? '📷 Photo' : g.last.body}` : `${g.members.length} teams · no messages yet`}
+                    </Body>
+                  </View>
+                  {g.unread > 0 && <View style={{ backgroundColor: t.red, borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}><Body style={{ color: '#fff', fontFamily: FONT.bodyBold, fontSize: 12 }}>{g.unread}</Body></View>}
+                </Pressable>
+              );
+            })}
+            {c.convs.length > 0 && <Display style={{ fontSize: 12, letterSpacing: 1.5, color: t.dim, margin: 4, marginTop: c.groups.length ? 10 : 4 }}>CONVERSATIONS</Display>}
             {c.convs.map((cv) => (
               <Pressable key={cv.team} onPress={() => c.setView({ kind: 'dm', team: cv.team })}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: t.radius.card, backgroundColor: t.card, borderColor: t.line, borderWidth: 1, marginBottom: 8 }}>
@@ -81,9 +110,13 @@ export function ChatOverlay() {
               </Pressable>
             ))}
           </ScrollView>
+        ) : c.view.kind === 'newgroup' ? (
+          <NewGroup />
         ) : (
-          <Conversation key={c.view.kind === 'dm' ? c.view.team : 'league'} scope={c.view.kind === 'dm' ? c.view.team : 'league'} />
+          <Conversation key={c.view.kind === 'dm' ? c.view.team : c.view.kind === 'group' ? groupScope(c.view.id) : 'league'}
+            scope={c.view.kind === 'dm' ? c.view.team : c.view.kind === 'group' ? groupScope(c.view.id) : 'league'} />
         )}
+        {info && group && <GroupInfo groupId={group.id} onClose={() => setInfo(false)} />}
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -102,6 +135,8 @@ function Conversation({ scope }: { scope: Scope }) {
   const mine = me?.user.teamId ?? null;
   const commissioner = !!me?.user.isCommissioner;
   const name = (id: string) => byId.get(id)?.name ?? id;
+  const gidHere = groupIdOf(scope);
+  const groupHere = gidHere != null ? c.groupFor(gidHere) : undefined;
 
   const [text, setText] = useState('');
   const [err, setErr] = useState('');
@@ -183,7 +218,7 @@ function Conversation({ scope }: { scope: Scope }) {
           </Pressable>
         )}
         {thread.loaded && thread.messages.length === 0 && (
-          <Body style={{ color: t.dim, textAlign: 'center', padding: 30 }}>{scope === 'league' ? 'No messages yet. Say something!' : `Start a conversation with ${name(scope)}.`}</Body>
+          <Body style={{ color: t.dim, textAlign: 'center', padding: 30 }}>{scope === 'league' ? 'No messages yet. Say something!' : gidHere != null ? 'No messages yet. Say hello to the group.' : `Start a conversation with ${name(scope)}.`}</Body>
         )}
         {thread.messages.map((m) => {
           const tm = byId.get(m.teamId);
@@ -275,7 +310,7 @@ function Conversation({ scope }: { scope: Scope }) {
         )}
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 10, paddingBottom: 0 }}>
           {!editing && <Pressable onPress={attach} hitSlop={8} style={{ paddingVertical: 8 }}><Body style={{ fontSize: 24 }}>📎</Body></Pressable>}
-          <TextInput value={text} placeholder={scope === 'league' ? 'Message the league — @ to mention a team' : `Message ${name(scope)}`} placeholderTextColor={t.dim2}
+          <TextInput value={text} placeholder={scope === 'league' ? 'Message the league — @ to mention a team' : gidHere != null ? `Message ${groupTitle(groupHere?.name, (groupHere?.members ?? []).filter((m) => m !== mine).map(name))}` : `Message ${name(scope)}`} placeholderTextColor={t.dim2}
             onChangeText={(v) => { setText(v); if (err) setErr(''); if (v.trim()) c.sendTyping(scope); }}
             multiline maxLength={MAX} onSubmitEditing={submit} blurOnSubmit={false}
             onKeyPress={(e) => { const k = e.nativeEvent as unknown as { key?: string; shiftKey?: boolean }; if (Platform.OS === 'web' && k.key === 'Enter' && !k.shiftKey) { (e as unknown as { preventDefault?: () => void }).preventDefault?.(); submit(); } }}
@@ -292,5 +327,121 @@ function Conversation({ scope }: { scope: Scope }) {
         </Pressable>
       </Modal>
     </View>
+  );
+}
+
+
+// ---------------------------------------------------------------------------------------------
+
+/** A small overlapping stack of the members' avatars (a group has no logo of its own). */
+function GroupFace({ members, size = 30 }: { members: string[]; size?: number }) {
+  const { byId } = useTeams();
+  const { t } = useTheme();
+  const shown = members.slice(0, 3);
+  const w = Math.round(size * 0.62);
+  return (
+    <View style={{ width: size + (shown.length - 1) * w * 0.5, height: size }}>
+      {shown.map((id, i) => (
+        <View key={id} style={{ position: 'absolute', left: i * w * 0.5, borderRadius: size, borderWidth: 2, borderColor: t.panel }}>
+          <TeamAvatar id={id} color={byId.get(id)?.color ?? t.dim2} logoKey={byId.get(id)?.logoKey} size={w + 2} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Pick teams (and optionally a name) to start a group. Same teams as an existing group opens that one. */
+function NewGroup() {
+  const c = useChat();
+  const { t } = useTheme();
+  const { teams } = useTeams();
+  const [picked, setPicked] = useState<string[]>([]);
+  const [name, setName] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length >= MAX_GROUP - 1 ? p : [...p, id]));
+  const ready = picked.length >= MIN_GROUP - 1;
+  const create = async () => {
+    setBusy(true); setErr('');
+    try { const id = await c.createGroup(picked, name.trim()); c.setView({ kind: 'group', id }); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Could not create the group'); setBusy(false); }
+  };
+  return (
+    <ScrollView contentContainerStyle={{ padding: 14 }} keyboardShouldPersistTaps="handled">
+      <TextInput value={name} onChangeText={setName} maxLength={MAX_GROUP_NAME} placeholder="Group name (optional)" placeholderTextColor={t.dim2}
+        style={{ color: t.text, backgroundColor: t.card, borderColor: t.line, borderWidth: 1, borderRadius: t.radius.button, paddingHorizontal: 12, paddingVertical: 10, fontFamily: FONT.body, marginBottom: 12 }} />
+      <Display style={{ fontSize: 12, letterSpacing: 1.5, color: t.dim, margin: 4 }}>ADD TEAMS ({picked.length + 1} of {MAX_GROUP} · you are included)</Display>
+      {teams.filter((x) => x.id !== c.myTeam).map((x) => {
+        const on = picked.includes(x.id);
+        return (
+          <Pressable key={x.id} onPress={() => toggle(x.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: t.radius.card, borderWidth: 1, borderColor: on ? t.red : 'transparent', backgroundColor: on ? t.card2 : 'transparent' }}>
+            <TeamAvatar id={x.id} color={x.color} logoKey={x.logoKey} size={32} />
+            <Body style={{ flex: 1, fontFamily: FONT.bodySemi, fontSize: 15 }}>{x.name}</Body>
+            <Body style={{ fontSize: 18, color: on ? t.red : t.dim2 }}>{on ? '✓' : '○'}</Body>
+          </Pressable>
+        );
+      })}
+      {!!err && <Body style={{ color: t.loss, marginTop: 8 }}>{err}</Body>}
+      <Pressable onPress={create} disabled={!ready || busy} style={{ backgroundColor: t.red, borderRadius: t.radius.button, paddingVertical: 13, alignItems: 'center', marginTop: 14, opacity: !ready || busy ? 0.5 : 1 }}>
+        <Display style={{ color: '#fff', fontSize: 16 }}>{ready ? 'START GROUP' : `PICK AT LEAST ${MIN_GROUP - 1} TEAMS`}</Display>
+      </Pressable>
+    </ScrollView>
+  );
+}
+
+/** Members, rename, add a team, leave. */
+function GroupInfo({ groupId, onClose }: { groupId: number; onClose: () => void }) {
+  const c = useChat();
+  const { t } = useTheme();
+  const { byId, teams } = useTeams();
+  const insets = useSafeAreaInsets();
+  const g = c.groupFor(groupId);
+  const [name, setName] = useState(g?.name ?? '');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  if (!g) return null;
+  const run = async (fn: () => Promise<unknown>) => { setBusy(true); setErr(''); try { await fn(); } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); } setBusy(false); };
+  const addable = teams.filter((x) => !g.members.includes(x.id));
+  return (
+    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
+      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+        <Pressable onPress={() => {}} style={{ backgroundColor: t.panel, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, paddingBottom: insets.bottom + 16, maxHeight: '85%' }}>
+          <ScrollView keyboardShouldPersistTaps="handled">
+            <Display style={{ fontSize: 20, marginBottom: 8 }}>Group</Display>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+              <TextInput value={name} onChangeText={setName} maxLength={MAX_GROUP_NAME} placeholder="Group name" placeholderTextColor={t.dim2}
+                style={{ flex: 1, color: t.text, backgroundColor: t.card, borderColor: t.line, borderWidth: 1, borderRadius: t.radius.button, paddingHorizontal: 12, paddingVertical: 9, fontFamily: FONT.body }} />
+              <Pressable disabled={busy || name.trim() === (g.name ?? '')} onPress={() => run(() => c.renameGroup(g.id, name))}
+                style={{ backgroundColor: t.red, borderRadius: t.radius.button, paddingHorizontal: 14, justifyContent: 'center', opacity: busy || name.trim() === (g.name ?? '') ? 0.5 : 1 }}>
+                <Display style={{ color: '#fff', fontSize: 13 }}>SAVE</Display>
+              </Pressable>
+            </View>
+            <Display style={{ fontSize: 12, letterSpacing: 1.5, color: t.dim, marginBottom: 4 }}>MEMBERS ({g.members.length})</Display>
+            {g.members.map((id) => (
+              <View key={id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 }}>
+                <TeamAvatar id={id} color={byId.get(id)?.color ?? t.dim2} logoKey={byId.get(id)?.logoKey} size={28} />
+                <Body style={{ flex: 1, fontFamily: FONT.bodySemi }}>{byId.get(id)?.name ?? id}{id === c.myTeam ? ' (you)' : ''}</Body>
+              </View>
+            ))}
+            {g.members.length < MAX_GROUP && addable.length > 0 && (
+              <>
+                <Display style={{ fontSize: 12, letterSpacing: 1.5, color: t.dim, marginTop: 12, marginBottom: 4 }}>ADD A TEAM · they only see new messages</Display>
+                {addable.map((x) => (
+                  <Pressable key={x.id} disabled={busy} onPress={() => run(() => c.addToGroup(g.id, x.id))} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 }}>
+                    <TeamAvatar id={x.id} color={x.color} logoKey={x.logoKey} size={28} />
+                    <Body style={{ flex: 1, fontFamily: FONT.bodySemi }}>{x.name}</Body>
+                    <Display style={{ color: t.red, fontSize: 13 }}>ADD</Display>
+                  </Pressable>
+                ))}
+              </>
+            )}
+            {!!err && <Body style={{ color: t.loss, marginTop: 8 }}>{err}</Body>}
+            <Pressable disabled={busy} onPress={() => run(async () => { await c.leaveGroup(g.id); onClose(); })} style={{ marginTop: 16, alignItems: 'center', padding: 10 }}>
+              <Body style={{ color: t.loss, fontFamily: FONT.bodyBold }}>Leave group</Body>
+            </Pressable>
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }

@@ -5,7 +5,7 @@
 
 /** A chat message as sent to clients. `reactions` maps an emoji to the team ids that reacted with it. */
 export type ChatMessage = {
-  id: number; teamId: string; toTeam: string | null; body: string; createdAt: number; editedAt: number | null; pinned: boolean;
+  id: number; teamId: string; toTeam: string | null; groupId: number | null; body: string; createdAt: number; editedAt: number | null; pinned: boolean;
   reactions: Record<string, string[]>; imageKey: string | null; mentions: string[];
   replyTo: { id: number; teamId?: string; body?: string; hasImage?: boolean; deleted?: boolean } | null;
 };
@@ -28,7 +28,8 @@ export type DraftEvent =
   | { type: 'chat-react'; id: number; reactions: Record<string, string[]> }
   | { type: 'chat-pin'; pinned: ChatMessage | null }
   | { type: 'chat-delete'; id: number }
-  | { type: 'typing'; teamId: string; scope: 'league' | 'dm' };
+  | { type: 'chat-group'; id: number }              // a group was created, renamed, or its members changed
+  | { type: 'typing'; teamId: string; scope: 'league' | 'dm' | 'group'; group?: number };
 
 const TYPING_MIN_GAP_MS = 800;
 
@@ -53,6 +54,13 @@ export class DraftRoom {
       const nom = (await this.state.storage.get<Nomination | null>('nomination')) ?? null;
       if (nom) pair[1].send(JSON.stringify({ type: 'nomination', nomination: nom } satisfies DraftEvent));
       return new Response(null, { status: 101, webSocket: pair[0] });
+    }
+
+    // The Worker tells us who is in each group so typing signals reach only its members (we can't see the database).
+    if (url.pathname === '/group-members' && req.method === 'POST') {
+      const { id, teams } = (await req.json()) as { id: number; teams: string[] | null };
+      if (teams) await this.state.storage.put(`grp:${id}`, teams); else await this.state.storage.delete(`grp:${id}`);
+      return new Response('ok');
     }
 
     if (url.pathname === '/broadcast' && req.method === 'POST') {
@@ -80,17 +88,29 @@ export class DraftRoom {
 
   // Clients are listeners; the only thing they may send is a typing signal. Everything else goes through the
   // authenticated REST API.
-  webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
+  async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
     if (typeof raw !== 'string' || raw.length > 200) return;
     let m: { type?: string; scope?: string };
     try { m = JSON.parse(raw); } catch { return; }
-    if (m.type !== 'typing' || typeof m.scope !== 'string' || !/^(league|[A-Za-z0-9]{1,8})$/.test(m.scope)) return;
+    if (m.type !== 'typing' || typeof m.scope !== 'string' || !/^(league|group:\d{1,9}|[A-Za-z0-9]{1,8})$/.test(m.scope)) return;
 
     const att = (ws.deserializeAttachment() ?? {}) as { team?: string; lastTyping?: number };
     if (!att.team) return;
     const now = Date.now();
     if (now - (att.lastTyping ?? 0) < TYPING_MIN_GAP_MS) return;     // cheap flood protection
     ws.serializeAttachment({ ...att, lastTyping: now });
+
+    if (m.scope.startsWith('group:')) {
+      const id = Number(m.scope.slice(6));
+      const members = (await this.state.storage.get<string[]>(`grp:${id}`)) ?? [];
+      if (!members.includes(att.team)) return;                            // only members can signal, and only to members
+      const gev: DraftEvent = { type: 'typing', teamId: att.team, scope: 'group', group: id };
+      for (const t of new Set(members.flatMap((x) => this.state.getWebSockets(x)))) {
+        if (t === ws) continue;
+        try { t.send(JSON.stringify(gev)); } catch { /* closed */ }
+      }
+      return;
+    }
 
     const league = m.scope === 'league';
     const ev: DraftEvent = { type: 'typing', teamId: att.team, scope: league ? 'league' : 'dm' };
