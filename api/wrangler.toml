@@ -19,6 +19,8 @@ bindings = [{ name = "DRAFT_ROOM", class_name = "DraftRoom" }]
 tag = "v1"
 new_sqlite_classes = ["DraftRoom"]
 
-# Nightly waiver processing, 08:00 UTC (about 3-4am Eastern).
+# 08:00 UTC (about 3-4am Eastern): waivers, then settle yesterday's scores.
+# 08:30 UTC: injured list + position eligibility from MLB.
+# Every 10 minutes from 15:00-05:59 UTC: live scores for today's games.
 [triggers]
-crons = ["0 8 * * *"]
+crons = ["0 8 * * *", "30 8 * * *", "*/10 15-23,0-5 * * *"]

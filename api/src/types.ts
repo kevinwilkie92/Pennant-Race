@@ -9,6 +9,8 @@ export interface Env {
   /** Comma-separated Apple Services IDs / bundle IDs the API accepts. Unset = Apple sign-in off. */
   APPLE_CLIENT_IDS?: string;
   /** Override where provider signing keys are fetched from (used by the end-to-end tests only). */
+  /** Override the MLB stats API base URL (used by the end-to-end tests only). */
+  MLB_API_BASE?: string;
   GOOGLE_JWKS_URL?: string;
   APPLE_JWKS_URL?: string;
 }

@@ -28,7 +28,8 @@ async function weekTotals(env: Env, yr: number): Promise<Map<string, number>> {
   const { results } = await env.DB.prepare(
     `SELECT w.week, dp.team_id AS teamId, ROUND(SUM(dp.points), 2) AS total
        FROM daily_points dp JOIN week w ON w.season = dp.season AND dp.date BETWEEN w.start_date AND w.end_date
-      WHERE dp.season = ? GROUP BY w.week, dp.team_id`,
+      WHERE dp.season = ? AND dp.slot NOT LIKE 'B%' AND dp.slot NOT LIKE 'IL%'   -- bench and injured-list points don't count
+      GROUP BY w.week, dp.team_id`,
   ).bind(yr).all<{ week: number; teamId: string; total: number }>();
   return new Map(results.map((r) => [`${r.week}|${r.teamId}`, r.total]));
 }

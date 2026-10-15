@@ -12,6 +12,7 @@ import type { Nomination } from './draft-room';
 import { registerDraftEdit } from './draft-edit';
 import { registerLeague } from './league';
 import { registerSocial } from './social';
+import { registerStats, runFeed } from './stats';
 import { registerChat } from './chat';
 import { registerLineup } from './lineup';
 import { processWaivers, registerPlayers } from './players';
@@ -385,6 +386,7 @@ async function liveSeason(env: Env): Promise<number | null> {
 
 registerDraftEdit(app);
 registerSocial(app);
+registerStats(app);
 registerLeague(app);
 registerLineup(app);
 registerPlayers(app);
@@ -395,7 +397,10 @@ registerTeams(app);
 // `fetch` serves the API; `scheduled` runs the nightly waiver processing (see wrangler.toml [triggers]).
 export default {
   fetch: app.fetch,
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(processWaivers(env).then(() => undefined));
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    // Three schedules (wrangler.toml): 08:00 UTC waivers + settle yesterday, 08:30 injuries/eligibility, and every few minutes of game time.
+    if (event.cron === '0 8 * * *') ctx.waitUntil(processWaivers(env).then(() => runFeed(env, 'daily')));
+    else if (event.cron === '30 8 * * *') ctx.waitUntil(runFeed(env, 'roster'));
+    else ctx.waitUntil(runFeed(env, 'live'));
   },
 };

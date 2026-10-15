@@ -1,5 +1,6 @@
 import type { Hono } from 'hono';
 import { INJURY_STATUSES, ROSTER_SIZE, canFillSlot, countsAgainstRoster, isILSlot, placePlayer, resolveWaivers, type Claim } from '@pennant/domain';
+import { playerStats } from './stats';
 import { requireAuth, requireCommissioner } from './auth';
 import { lineupAt } from './lineup';
 import { activeCount, loadRoster, materializeStmts, ownerMap, playerEntries, type RosterEntry } from './roster';
@@ -317,7 +318,7 @@ export function registerPlayers(app: App) {
     if (!(await c.env.DB.prepare('SELECT 1 FROM player WHERE id = ?').bind(id).first())) return c.json({ error: 'Player not found' }, 404);
     await (b.status === null
       ? c.env.DB.prepare('DELETE FROM player_status WHERE player_id = ?').bind(id)
-      : c.env.DB.prepare('INSERT INTO player_status (player_id, status, note, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(player_id) DO UPDATE SET status = excluded.status, note = excluded.note, updated_at = excluded.updated_at')
+      : c.env.DB.prepare('INSERT INTO player_status (player_id, status, note, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(player_id) DO UPDATE SET status = excluded.status, note = excluded.note, updated_at = excluded.updated_at, source = \'manual\'')
           .bind(id, b.status, b.note ?? null, Date.now())).run();
     return c.json({ ok: true });
   });
@@ -351,6 +352,7 @@ export function registerPlayers(app: App) {
       ownerId: owner, injury: status ?? null, waiversUntil: wv?.clearsOn ?? null, draft,
       history: [...moves, ...trades].sort((a, b) => (b.at as number) - (a.at as number)),
       points, seasonPoints: Math.round(points.reduce((n, x) => n + x.points, 0) * 100) / 100,
+      stats: await playerStats(c.env, id),
     });
   });
 
