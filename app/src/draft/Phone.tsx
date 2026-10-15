@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { BUDGET, ROSTER_LABELS, ROSTER_SIZE } from '@pennant/domain';
-import type { DraftManager, DraftPlayer, DraftSale, MlbTeam, Team } from '../api';
+import type { DraftManager, DraftPlayer, DraftSale, MlbTeam, Nomination, Team } from '../api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TeamAvatar } from '../TeamAvatar';
 import { FONT, useTheme, type Tokens } from '../theme';
@@ -14,7 +14,7 @@ export type PhoneProps = {
   mlb: MlbTeam[]; players: DraftPlayer[]; teams: Team[]; managers: DraftManager[]; sales: DraftSale[];
   sale: Map<number, DraftSale>; roster: Roster; byPlayer: Map<number, DraftPlayer>;
   current: string | null; onBrowse: (abbr: string) => void;
-  myTeamId: string | null; onBack: () => void;
+  myTeamId: string | null; onBack: () => void; nomination?: Nomination | null;
 };
 
 type Tab = 'board' | 'mgrs' | 'mine' | 'log';
@@ -86,6 +86,26 @@ export function Phone(p: PhoneProps) {
           </View>
         )}
       </View>
+
+      {/* now bidding: the player the commissioner has put up for auction */}
+      {p.nomination && (
+        <Pressable onPress={() => { const pl = p.byPlayer.get(p.nomination!.playerId); if (pl) setPlayerSheet(pl); }}
+          style={[s.row, { gap: 10, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: 'rgba(51,176,106,0.16)', borderBottomColor: 'rgba(51,176,106,0.4)', borderBottomWidth: 1 }]}>
+          <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: t.green }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: t.green, fontFamily: FONT.bodyBold, fontSize: 10, letterSpacing: 1.5 }}>NOW BIDDING</Text>
+            <Text numberOfLines={1} style={{ color: t.text, fontFamily: FONT.bodyBold, fontSize: 15 }}>
+              {p.nomination.name} <Text style={{ color: t.dim, fontFamily: FONT.body, fontSize: 12 }}>{p.nomination.positions.join(',')} · {p.nomination.mlbTeam ?? 'FA'}</Text>
+            </Text>
+          </View>
+          {p.nomination.bid != null ? (
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={{ color: t.green, fontFamily: FONT.num, fontSize: 20 }}>${p.nomination.bid}</Text>
+              {p.nomination.teamId && <Text numberOfLines={1} style={{ color: t.dim, fontFamily: FONT.body, fontSize: 10, maxWidth: 120 }}>{teamById.get(p.nomination.teamId)?.name ?? p.nomination.teamId}</Text>}
+            </View>
+          ) : <Text style={{ color: t.dim, fontFamily: FONT.body, fontSize: 11 }}>no bids yet</Text>}
+        </Pressable>
+      )}
 
       {/* latest pick */}
       {last && (

@@ -23,6 +23,7 @@ function Companion({ myTeamId }: { myTeamId: string | null }) {
       mlb={d.mlb} players={d.players} teams={d.teams} managers={d.state?.managers ?? []} sales={d.state?.sales ?? []}
       sale={d.sale} roster={d.roster} byPlayer={d.byPlayer}
       current={isLive ? d.state?.hat ?? null : browse} onBrowse={setBrowse}
+      nomination={d.state?.nomination ?? null}
       myTeamId={myTeamId} onBack={() => (router.canGoBack() ? router.back() : router.replace('/team'))}
     />
   );

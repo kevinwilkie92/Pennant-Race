@@ -56,7 +56,8 @@ function DraftRoom({ commissioner, myTeamId }: { commissioner: boolean; myTeamId
         <View style={{ flex: 1 }}>
           {tab === 'board' && (
             <Board mlb={d.mlb} players={d.players} teams={d.teams} sale={d.sale} current={current} isLive={isLive}
-              commissioner={commissioner} season={d.season} onSelect={select} onDraft={setAward} />
+              commissioner={commissioner} season={d.season} onSelect={select} nomination={d.state?.nomination ?? null}
+              onDraft={(p) => { setAward(p); guard(() => api.nominate(p.id)); }} />
           )}
           {tab === 'rosters' && <Rosters teams={d.teams} managers={d.state?.managers ?? []} roster={d.roster} highlight={focus} />}
           {tab === 'undrafted' && <Undrafted players={d.players} sale={d.sale} />}
@@ -71,7 +72,7 @@ function DraftRoom({ commissioner, myTeamId }: { commissioner: boolean; myTeamId
         )}
       </View>
       {award && d.state && (
-        <Award player={award} managers={d.state.managers} teams={d.teams} onClose={() => setAward(null)}
+        <Award player={award} managers={d.state.managers} teams={d.teams} onClose={() => { setAward(null); guard(() => api.clearNomination()); }}
           onDone={() => { setAward(null); d.refresh(); }} />
       )}
     </View>

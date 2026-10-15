@@ -39,7 +39,9 @@ export type DraftSale = {
   isKeeper: number; keeperYear: number | null; slot: string | null;
 };
 export type DraftManager = { teamId: string; spent: number; filled: number; remaining: number; maxBid: number; spots: number };
-export type DraftState = { season: number; hat: string | null; managers: DraftManager[]; sales: DraftSale[] };
+/** The player currently "on the block", with the leading manager and bid if the commissioner is tracking one. */
+export type Nomination = { playerId: number; name: string; mlbTeam: string | null; positions: string[]; teamId: string | null; bid: number | null; at: number };
+export type DraftState = { season: number; hat: string | null; nomination: Nomination | null; managers: DraftManager[]; sales: DraftSale[] };
 export type DraftPlayer = { id: number; name: string; mlbTeam: string | null; pos: string; pos2: string | null; positions: string[] };
 export type MlbTeam = { abbr: string; name: string; logo: string | null; color: string | null; color2: string | null };
 export type SeasonRow = { year: number; status: 'live' | 'archived' };
@@ -118,6 +120,9 @@ export const api = {
   draftState: (season: number) => call<DraftState>(`/draft/state?season=${season}`),
   sell: (b: { playerId: number; teamId: string; price: number }) =>
     call<{ seq: number }>('/draft/sales', { method: 'POST', body: JSON.stringify(b) }),
+  nominate: (playerId: number, teamId?: string | null, bid?: number | null) =>
+    call<{ nomination: Nomination }>('/draft/nomination', { method: 'PUT', body: JSON.stringify({ playerId, teamId: teamId ?? null, bid: bid ?? null }) }),
+  clearNomination: () => call<{ ok: true }>('/draft/nomination', { method: 'DELETE' }),
   undo: () => call<{ ok: true }>('/draft/sales/last', { method: 'DELETE' }),
   setHat: (mlbTeam: string | null) => call<{ ok: true }>('/draft/hat', { method: 'POST', body: JSON.stringify({ mlbTeam }) }),
   lineup: (teamId: string, date?: string) =>

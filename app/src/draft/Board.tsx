@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, Text, TextInput, View, type ViewStyle } from 'react-native';
-import type { DraftPlayer, DraftSale, MlbTeam, Team } from '../api';
+import type { DraftPlayer, DraftSale, MlbTeam, Nomination, Team } from '../api';
 import { TeamAvatar } from '../TeamAvatar';
 import { FONT } from '../theme';
 import { GROUPS, groupOf, type Group } from './useDraft';
@@ -16,9 +16,10 @@ type Props = {
   isLive: boolean; commissioner: boolean; season: number | null;
   onSelect: (abbr: string | null) => void;    // pick a team (hat draw when live)
   onDraft: (p: DraftPlayer) => void;
+  nomination?: Nomination | null;
 };
 
-export function Board({ mlb, players, teams, sale, current, isLive, commissioner, season, onSelect, onDraft }: Props) {
+export function Board({ mlb, players, teams, sale, current, isLive, commissioner, season, onSelect, onDraft, nomination }: Props) {
   const [filter, setFilter] = useState('');
   const [pick, setPick] = useState(false);
   const [history, setHistory] = useState<string[]>([]);
@@ -106,6 +107,30 @@ export function Board({ mlb, players, teams, sale, current, isLive, commissioner
           )}
         </View>
 
+        {/* On the block: whoever the commissioner has put up for auction, with the leading bid */}
+        {nomination && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18, backgroundColor: 'rgba(47,191,99,0.14)', borderTopColor: 'rgba(47,191,99,0.5)', borderTopWidth: 2, borderBottomColor: 'rgba(47,191,99,0.25)', borderBottomWidth: 1, paddingHorizontal: 28, paddingVertical: 14 }}>
+            <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: D.green }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: D.green, fontFamily: FONT.bodyBold, fontSize: 12, letterSpacing: 4 }}>ON THE BLOCK</Text>
+              <Text numberOfLines={1} style={{ color: D.text, fontFamily: FONT.display, fontSize: 38, lineHeight: 42 }}>{nomination.name}</Text>
+              <Text style={{ color: D.dim, fontFamily: FONT.body, fontSize: 14 }}>{nomination.mlbTeam ?? 'FA'} · {nomination.positions.join(',')}</Text>
+            </View>
+            {nomination.bid != null ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                {nomination.teamId && teamById.get(nomination.teamId) && (
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ color: D.dim2, fontFamily: FONT.bodyBold, fontSize: 11, letterSpacing: 2 }}>LEADING</Text>
+                    <Text numberOfLines={1} style={{ color: D.text, fontFamily: FONT.bodyBold, fontSize: 16, maxWidth: 260 }}>{teamById.get(nomination.teamId)!.name}</Text>
+                  </View>
+                )}
+                {nomination.teamId && teamById.get(nomination.teamId) && <TeamAvatar id={nomination.teamId} color={teamById.get(nomination.teamId)!.color} logoKey={teamById.get(nomination.teamId)!.logoKey} size={46} />}
+                <Text style={{ color: D.green, fontFamily: FONT.num, fontSize: 52 }}>${nomination.bid}</Text>
+              </View>
+            ) : <Text style={{ color: D.dim, fontFamily: FONT.bodySemi, fontSize: 16 }}>no bids yet</Text>}
+          </View>
+        )}
+
         {/* Position columns */}
         <ScrollView style={{ backgroundColor: D.bg }} contentContainerStyle={{ flexDirection: 'row', gap: 12, padding: 18 }}>
           {cols.map((c) => (
@@ -116,7 +141,7 @@ export function Board({ mlb, players, teams, sale, current, isLive, commissioner
                 </View>
                 <Text style={{ color: D.dim, fontFamily: FONT.bodyBold, fontSize: 12, letterSpacing: 1 }}>{c.list.filter((p) => !sale.has(p.id)).length} LEFT</Text>
               </View>
-              {c.list.map((p) => <Row key={p.id} p={p} color={c.color} s={sale.get(p.id)} teamById={teamById} canDraft={isLive && commissioner} onDraft={onDraft} />)}
+              {c.list.map((p) => <Row key={p.id} p={p} color={c.color} s={sale.get(p.id)} teamById={teamById} canDraft={isLive && commissioner} onDraft={onDraft} onBlock={nomination?.playerId === p.id} />)}
             </View>
           ))}
         </ScrollView>
@@ -141,12 +166,12 @@ export function Board({ mlb, players, teams, sale, current, isLive, commissioner
   );
 }
 
-function Row({ p, color, s, teamById, canDraft, onDraft }: {
-  p: DraftPlayer; color: string; s?: DraftSale; teamById: Map<string, Team>; canDraft: boolean; onDraft: (p: DraftPlayer) => void;
+function Row({ p, color, s, teamById, canDraft, onDraft, onBlock }: {
+  p: DraftPlayer; color: string; s?: DraftSale; teamById: Map<string, Team>; canDraft: boolean; onDraft: (p: DraftPlayer) => void; onBlock?: boolean;
 }) {
   const w = s ? teamById.get(s.teamId) : undefined;
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: s ? D.sold : D.row, padding: 10, marginBottom: 6, gap: 12, opacity: s ? 0.75 : 1, minHeight: 66 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: s ? D.sold : D.row, padding: 10, marginBottom: 6, gap: 12, opacity: s ? 0.75 : 1, minHeight: 66, borderWidth: onBlock ? 2 : 0, borderColor: D.green }}>
       <View style={{ width: 36, height: 36, borderWidth: 2, borderColor: color, backgroundColor: 'rgba(255,255,255,0.05)', opacity: s ? 0.5 : 1 }} />
       <View style={{ flex: 1 }}>
         <Text numberOfLines={1} style={{ fontFamily: FONT.display, fontSize: 25, color: s ? D.dim2 : D.text }}>{p.name}</Text>

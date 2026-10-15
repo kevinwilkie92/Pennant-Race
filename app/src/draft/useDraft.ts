@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { assignSlots } from '@pennant/domain';
-import { api, type DraftPlayer, type DraftSale, type DraftState, type MlbTeam, type SeasonRow } from '../api';
+import { api, type DraftPlayer, type DraftSale, type DraftState, type MlbTeam, type Nomination, type SeasonRow } from '../api';
 import { useRealtime } from '../realtime';
 import { useTeams } from '../teams';
 
@@ -62,6 +62,7 @@ export function useDraft() {
   // Realtime: every client (TV, commissioner, phones) refetches on any draft event.
   useEffect(() => subscribe((ev) => {
     if (ev.type === 'hat') setState((st) => (st ? { ...st, hat: ev.mlbTeam as string | null } : st));
+    else if (ev.type === 'nomination') setState((st) => (st ? { ...st, nomination: ev.nomination as Nomination | null } : st));
     else if (ev.type === 'sale' || ev.type === 'undo' || ev.type === 'keepers') { if (ev.season === seasonRef.current) refresh(); }
   }), [subscribe, refresh]);
 

@@ -10,12 +10,19 @@ export type ChatMessage = {
   replyTo: { id: number; teamId?: string; body?: string; hasImage?: boolean; deleted?: boolean } | null;
 };
 
+/** The player currently "on the block" in the auction, and the live leading bid if the commissioner is tracking one. */
+export type Nomination = {
+  playerId: number; name: string; mlbTeam: string | null; positions: string[];
+  teamId: string | null; bid: number | null; at: number;
+};
+
 export type DraftEvent =
   | { type: 'sale'; season: number; playerId: number; teamId: string; price: number; seq: number }
   | { type: 'undo'; season: number; seq: number }
   | { type: 'keepers'; season: number }
   | { type: 'team'; id: string }                    // a team's name or logo changed
   | { type: 'hat'; mlbTeam: string | null }
+  | { type: 'nomination'; nomination: Nomination | null }
   | { type: 'chat'; message: ChatMessage }
   | { type: 'chat-edit'; message: ChatMessage }
   | { type: 'chat-react'; id: number; reactions: Record<string, string[]> }
@@ -43,12 +50,15 @@ export class DraftRoom {
       pair[1].serializeAttachment({ team, lastTyping: 0 });
       const hat = (await this.state.storage.get<string | null>('hat')) ?? null;
       pair[1].send(JSON.stringify({ type: 'hat', mlbTeam: hat } satisfies DraftEvent));
+      const nom = (await this.state.storage.get<Nomination | null>('nomination')) ?? null;
+      if (nom) pair[1].send(JSON.stringify({ type: 'nomination', nomination: nom } satisfies DraftEvent));
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
 
     if (url.pathname === '/broadcast' && req.method === 'POST') {
       const { ev, to } = (await req.json()) as { ev: DraftEvent; to?: string[] };
       if (ev.type === 'hat') await this.state.storage.put('hat', ev.mlbTeam);
+      if (ev.type === 'nomination') await this.state.storage.put('nomination', ev.nomination);
       const msg = JSON.stringify(ev);
       // `to` limits delivery to sockets tagged with those teams (direct messages). No `to` means everyone.
       const targets = to ? [...new Set(to.flatMap((t) => this.state.getWebSockets(t)))] : this.state.getWebSockets();
@@ -56,6 +66,10 @@ export class DraftRoom {
         try { ws.send(msg); } catch { /* closed; the runtime cleans up */ }
       }
       return new Response('ok');
+    }
+
+    if (url.pathname === '/nomination') {
+      return Response.json({ nomination: (await this.state.storage.get<Nomination | null>('nomination')) ?? null });
     }
 
     if (url.pathname === '/hat') {

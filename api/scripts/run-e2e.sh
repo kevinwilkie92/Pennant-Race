@@ -5,7 +5,7 @@ set -u
 cd "$(dirname "$0")/.."
 echo 'JOIN_CODE=testcode' > .dev.vars
 status=0
-for suite in keepers-e2e league-e2e lineup-e2e waivers-e2e trades-e2e extras-e2e chat-e2e logos-e2e dm-e2e; do
+for suite in keepers-e2e league-e2e lineup-e2e waivers-e2e trades-e2e extras-e2e chat-e2e logos-e2e dm-e2e nominate-e2e; do
   rm -rf .wrangler
   npx wrangler d1 migrations apply pennant-race --local >/dev/null 2>&1
   npx wrangler dev --port 8787 >/tmp/e2e-wrangler.log 2>&1 &

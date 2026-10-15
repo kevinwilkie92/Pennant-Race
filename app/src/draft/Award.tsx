@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { validateBid } from '@pennant/domain';
 import { api, type DraftManager, type DraftPlayer, type Team } from '../api';
@@ -14,6 +14,16 @@ export function Award({ player, managers, teams, onClose, onDone }: {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const open = managers.filter((m) => m.spots > 0);
+
+  // While the commissioner picks the leader and types the bid, everyone's "on the block" strip follows (debounced;
+  // an incomplete or too-high bid is simply not shown yet).
+  useEffect(() => {
+    const m = managers.find((x) => x.teamId === teamId);
+    const n = Number(bid);
+    const validBid = bid !== '' && Number.isInteger(n) && n >= 1 && (!m || n <= m.maxBid);
+    const id = setTimeout(() => { api.nominate(player.id, teamId, validBid ? n : null).catch(() => {}); }, 350);
+    return () => clearTimeout(id);
+  }, [teamId, bid, player.id]);
   const byId = new Map(teams.map((t) => [t.id, t]));
 
   const submit = async () => {

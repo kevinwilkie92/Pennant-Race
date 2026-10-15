@@ -8,13 +8,14 @@ import {
 } from './auth';
 import type { AppVars, Env } from './types';
 import { broadcast, room } from './realtime';
+import type { Nomination } from './draft-room';
 import { registerLeague } from './league';
 import { registerChat } from './chat';
 import { registerLineup } from './lineup';
 import { processWaivers, registerPlayers } from './players';
 import { registerTeams } from './teams';
 import { registerTrades } from './trades';
-import { loadRoster } from './roster';
+import { loadRoster, playerEntries } from './roster';
 
 export { DraftRoom } from './draft-room';
 
@@ -93,6 +94,18 @@ app.get('/mlb-teams', requireAuth, async (c) => {
 });
 
 // ------------------------------------------------------------------ draft
+/** A nomination nobody has touched for this long is assumed abandoned (e.g. the commissioner closed the browser mid-bid). */
+const NOMINATION_TTL_MS = 15 * 60 * 1000;
+
+async function currentNomination(env: Env): Promise<Nomination | null> {
+  const { nomination } = await (await room(env).fetch('https://room/nomination')).json<{ nomination: Nomination | null }>();
+  return nomination && Date.now() - nomination.at < NOMINATION_TTL_MS ? nomination : null;
+}
+/** Clears the strip for everyone (no-op if there isn't one). */
+async function clearNomination(env: Env) {
+  if (await currentNomination(env)) await broadcast(env, { type: 'nomination', nomination: null });
+}
+
 async function draftState(env: Env, yr: number) {
   const { results: money } = await env.DB.prepare(
     `SELECT t.id AS teamId, COALESCE(SUM(ds.price), 0) AS spent, COUNT(ds.id) AS filled
@@ -110,6 +123,7 @@ async function draftState(env: Env, yr: number) {
   return {
     season: yr,
     hat: hat.mlbTeam,
+    nomination: await currentNomination(env),
     managers: money.map((m) => ({ ...m, remaining: 300 - m.spent, maxBid: maxBid(m.spent, m.filled), spots: ROSTER_SIZE - m.filled })),
     sales,
   };
@@ -295,6 +309,36 @@ app.get('/draft/ws', async (c) => {
 app.post('/draft/hat', requireAuth, requireCommissioner, async (c) => {
   const { mlbTeam } = await c.req.json<{ mlbTeam: string | null }>();
   await broadcast(c.env, { type: 'hat', mlbTeam });
+  await clearNomination(c.env);                       // a new team is being drawn; whoever was on the block is done
+  return c.json({ ok: true });
+});
+
+// Puts a player "on the block" for everyone, optionally with the leading manager and current bid. Re-sent as those change.
+app.put('/draft/nomination', requireAuth, requireCommissioner, async (c) => {
+  const yr = await liveSeason(c.env);
+  if (yr == null) return c.json({ error: 'No live season' }, 409);
+  const b = await c.req.json<{ playerId: number; teamId?: string | null; bid?: number | null }>().catch(() => null);
+  if (!b || !Number.isInteger(b.playerId)) return c.json({ error: 'Bad request' }, 400);
+  const p = (await playerEntries(c.env, yr, [b.playerId])).get(b.playerId);
+  if (!p) return c.json({ error: 'Player not found' }, 404);
+  if (await c.env.DB.prepare('SELECT 1 FROM draft_sale WHERE season = ? AND player_id = ?').bind(yr, b.playerId).first()) {
+    return c.json({ error: 'That player has already been drafted' }, 409);
+  }
+  const teamId = b.teamId ?? null, bid = b.bid ?? null;
+  if (bid !== null && (!Number.isInteger(bid) || bid < 1)) return c.json({ error: 'A bid is a whole number of at least $1' }, 400);
+  if (teamId !== null) {
+    const money = await c.env.DB.prepare('SELECT COALESCE(SUM(price), 0) AS spent, COUNT(*) AS filled FROM draft_sale WHERE season = ? AND team_id = ?').bind(yr, teamId).first<{ spent: number; filled: number }>();
+    if (!(await c.env.DB.prepare('SELECT 1 FROM team WHERE id = ?').bind(teamId).first())) return c.json({ error: 'Unknown team' }, 400);
+    if ((money?.filled ?? 0) >= ROSTER_SIZE) return c.json({ error: 'That team’s roster is full' }, 400);
+    if (bid !== null && bid > maxBid(money?.spent ?? 0, money?.filled ?? 0)) return c.json({ error: `That team’s max bid is $${maxBid(money?.spent ?? 0, money?.filled ?? 0)}` }, 400);
+  }
+  const nomination: Nomination = { playerId: p.playerId, name: p.name, mlbTeam: p.mlbTeam, positions: p.positions, teamId, bid, at: Date.now() };
+  await broadcast(c.env, { type: 'nomination', nomination });
+  return c.json({ nomination });
+});
+
+app.delete('/draft/nomination', requireAuth, requireCommissioner, async (c) => {
+  await clearNomination(c.env);
   return c.json({ ok: true });
 });
 
@@ -318,6 +362,7 @@ app.post('/draft/sales', requireAuth, requireCommissioner, async (c) => {
     return c.json({ error: 'Player already drafted' }, 409);
   }
   await broadcast(c.env, { type: 'sale', season: yr, playerId, teamId, price, seq });
+  await clearNomination(c.env);                        // the player has been sold, so the strip goes away
   return c.json({ seq }, 201);
 });
 
