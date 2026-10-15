@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { api, type BracketMatch, type MatchupRow, type StandingRow, type Team } from '../../src/api';
+import { api, type BracketMatch, type MatchupRow, type StandingRow, type Team, type Txn } from '../../src/api';
+import { describeTxn } from '../../src/Transactions';
 import { useAuth } from '../../src/auth';
 import { fmtPts, useLeague } from '../../src/useLeague';
 import { FONT, useTheme } from '../../src/theme';
 import { Body, Card, Display } from '../../src/ui';
 
-type Sub = 'standings' | 'matchups' | 'bracket';
+type Sub = 'standings' | 'matchups' | 'bracket' | 'activity';
 const SUBS: { key: Sub; label: string }[] = [
-  { key: 'standings', label: 'Standings' }, { key: 'matchups', label: 'Matchups' }, { key: 'bracket', label: 'Bracket' },
+  { key: 'standings', label: 'Standings' }, { key: 'matchups', label: 'Matchups' }, { key: 'bracket', label: 'Bracket' }, { key: 'activity', label: 'Activity' },
 ];
 
 export default function League() {
@@ -35,6 +36,7 @@ export default function League() {
       {sub === 'standings' && <Standings byId={lg.byId} />}
       {sub === 'matchups' && <Matchups lg={lg} />}
       {sub === 'bracket' && <Bracket byId={lg.byId} />}
+      {sub === 'activity' && <Activity byId={lg.byId} />}
     </ScrollView>
   );
 }
@@ -211,5 +213,23 @@ function Bracket({ byId }: { byId: Map<string, Team> }) {
         );
       })}
     </View>
+  );
+}
+
+function Activity({ byId }: { byId: Map<string, Team> }) {
+  const { t } = useTheme();
+  const [log, setLog] = useState<Txn[] | null>(null);
+  useEffect(() => { api.transactions().then(setLog).catch(() => setLog([])); }, []);
+  if (!log) return <ActivityIndicator color={t.red} />;
+  return (
+    <Card style={{ overflow: 'hidden' }}>
+      {log.length === 0 && <Body style={{ color: t.dim, padding: 14 }}>No waiver or trade activity yet.</Body>}
+      {log.map((x, i) => (
+        <View key={x.id} style={{ padding: 12, borderTopWidth: i ? 1 : 0, borderTopColor: t.line }}>
+          <Body style={{ fontSize: 13.5 }}>{describeTxn(x, (id) => byId.get(id)?.name ?? id)}</Body>
+          <Body style={{ color: t.dim2, fontSize: 11 }}>{new Date(x.at).toLocaleString()}</Body>
+        </View>
+      ))}
+    </Card>
   );
 }

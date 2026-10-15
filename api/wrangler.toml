@@ -18,3 +18,7 @@ bindings = [{ name = "DRAFT_ROOM", class_name = "DraftRoom" }]
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["DraftRoom"]
+
+# Nightly waiver processing, 08:00 UTC (about 3-4am Eastern).
+[triggers]
+crons = ["0 8 * * *"]

@@ -1,7 +1,7 @@
 import type { Hono } from 'hono';
 import { ROSTER_LABELS, canFillSlot } from '@pennant/domain';
 import { requireAuth } from './auth';
-import { loadRoster, type RosterEntry } from './roster';
+import { loadRoster, materializeStmts, playerEntries, type RosterEntry } from './roster';
 import { isoNow, leagueToday } from './time';
 import type { AppVars, Env } from './types';
 
@@ -16,14 +16,35 @@ async function seasonStatus(env: Env, q: string | undefined) {
   return row ?? null;
 }
 
-/** Each player's slot as of `date`: the latest history row at or before it, else his current slot. */
-async function lineupAt(env: Env, yr: number, teamId: string, date: string): Promise<RosterEntry[]> {
+/**
+ * The lineup as of `date`, including players who have since been dropped and excluding ones not yet added.
+ * A player's slot is the latest history row at or before the date ('' = off the roster). With no history he
+ * has been on the team all along; if his first row is in the future he hadn't been added yet.
+ */
+export async function lineupAt(env: Env, yr: number, teamId: string, date: string): Promise<RosterEntry[]> {
   const base = await loadRoster(env, yr, teamId);
-  const hist = (await env.DB.prepare('SELECT player_id AS playerId, slot, from_date AS fromDate FROM lineup_history WHERE season = ? AND team_id = ? AND from_date <= ? ORDER BY from_date')
-    .bind(yr, teamId, date).all<{ playerId: number; slot: string; fromDate: string }>()).results;
-  const at = new Map<number, string>();
-  for (const h of hist) at.set(h.playerId, h.slot); // ordered ascending, so the latest wins
-  return base.map((e) => ({ ...e, slot: at.get(e.playerId) ?? e.slot }));
+  const hist = (await env.DB.prepare('SELECT player_id AS playerId, slot, from_date AS fromDate FROM lineup_history WHERE season = ? AND team_id = ? ORDER BY from_date')
+    .bind(yr, teamId).all<{ playerId: number; slot: string; fromDate: string }>()).results;
+  const rows = new Map<number, { slot: string; fromDate: string }[]>();
+  for (const h of hist) rows.set(h.playerId, [...(rows.get(h.playerId) ?? []), h]);
+
+  const baseIds = new Set(base.map((e) => e.playerId));
+  const extra = [...rows.keys()].filter((id) => !baseIds.has(id));
+  const info = await playerEntries(env, yr, extra);
+  const everyone: (Omit<RosterEntry, 'slot'> & { slot: string })[] = [
+    ...base, ...extra.flatMap((id) => (info.has(id) ? [{ ...info.get(id)!, slot: '' }] : [])),
+  ];
+
+  const out: RosterEntry[] = [];
+  for (const e of everyone) {
+    const r = rows.get(e.playerId);
+    if (!r) { out.push(e); continue; }
+    const applicable = r.filter((x) => x.fromDate <= date);
+    if (!applicable.length) continue;                       // not on the team yet
+    const slot = applicable[applicable.length - 1].slot;
+    if (slot !== '') out.push({ ...e, slot });
+  }
+  return out;
 }
 
 /** A player is locked once his MLB team's game has started on that date (only meaningful for today). */
@@ -89,14 +110,17 @@ export function registerLineup(app: App) {
     const db = c.env.DB;
     const stmts: D1PreparedStatement[] = [];
 
-    const stored = await db.prepare('SELECT 1 FROM roster_slot WHERE season = ? AND team_id = ? LIMIT 1').bind(s.year, teamId).first();
-    if (!stored) {
-      // First edit for this team this season: freeze the draft-derived lineup into roster_slot.
-      for (const e of current) stmts.push(db.prepare('INSERT INTO roster_slot (season, team_id, player_id, slot) VALUES (?, ?, ?, ?)').bind(s.year, teamId, e.playerId, e.slot));
-    }
+    // First edit for this team this season: freeze the draft-derived lineup into roster_slot.
+    stmts.push(...(await materializeStmts(c.env, s.year, teamId)));
+    // A baseline row records where he sat before any edit — but only for players who have been here all along
+    // (someone added mid-season already has an acquisition row and must not appear before it).
+    const hadHistory = new Set((await db.prepare(`SELECT DISTINCT player_id AS id FROM lineup_history WHERE season = ? AND team_id = ? AND player_id IN (${changes.map(() => '?').join(',')})`)
+      .bind(s.year, teamId, ...changes.map((x) => x.e.playerId)).all<{ id: number }>()).results.map((r) => r.id));
     for (const ch of changes) {
+      if (!hadHistory.has(ch.e.playerId)) {
+        stmts.push(db.prepare('INSERT INTO lineup_history (season, team_id, player_id, slot, from_date) VALUES (?, ?, ?, ?, ?)').bind(s.year, teamId, ch.e.playerId, was.get(ch.e.playerId)!, BASELINE));
+      }
       stmts.push(
-        db.prepare('INSERT OR IGNORE INTO lineup_history (season, team_id, player_id, slot, from_date) VALUES (?, ?, ?, ?, ?)').bind(s.year, teamId, ch.e.playerId, was.get(ch.e.playerId)!, BASELINE),
         db.prepare('INSERT INTO lineup_history (season, team_id, player_id, slot, from_date) VALUES (?, ?, ?, ?, ?) ON CONFLICT(season, player_id, from_date) DO UPDATE SET slot = excluded.slot').bind(s.year, teamId, ch.e.playerId, ch.slot, date),
       );
     }

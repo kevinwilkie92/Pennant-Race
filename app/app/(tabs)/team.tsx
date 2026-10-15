@@ -4,6 +4,8 @@ import { ROSTER_LABELS, canFillSlot } from '@pennant/domain';
 import { api, type LineupSlot } from '../../src/api';
 import { useAuth } from '../../src/auth';
 import { Lineup } from '../../src/Lineup';
+import { Transactions } from '../../src/Transactions';
+import { useLeague } from '../../src/useLeague';
 import { fmtPts } from '../../src/useLeague';
 import { FONT, useTheme } from '../../src/theme';
 import { Body, Card, Display } from '../../src/ui';
@@ -19,6 +21,8 @@ export default function MyTeam() {
   const [data, setData] = useState<Awaited<ReturnType<typeof api.lineup>> | null>(null);
   const [err, setErr] = useState('');
   const [sel, setSel] = useState<LineupSlot | null>(null);
+  const [sub, setSub] = useState<'lineup' | 'transactions'>('lineup');
+  const lg = useLeague();
 
   const load = useCallback(() => {
     if (!team) return;
@@ -57,7 +61,20 @@ export default function MyTeam() {
         )}
       </Card>
 
-      {data && day && (
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+        {([['lineup', 'Lineup'], ['transactions', 'Transactions']] as const).map(([k, label]) => {
+          const on = sub === k;
+          return (
+            <Pressable key={k} onPress={() => setSub(k)} style={{ paddingHorizontal: 16, paddingVertical: 7, borderRadius: t.radius.chip, borderWidth: 1, borderColor: on ? t.red : t.line, backgroundColor: on ? t.red : 'transparent' }}>
+              <Display style={{ fontSize: 13, color: on ? '#fff' : t.dim }}>{label}</Display>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {sub === 'transactions' && <Transactions teamId={team.id} commissioner={!!me?.user.isCommissioner} teamName={(id) => lg.byId.get(id)?.name ?? id} />}
+
+      {sub === 'lineup' && data && day && (
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <Pressable onPress={() => setDate(shift(day, -1))} hitSlop={12}><Body style={{ fontSize: 24 }}>‹</Body></Pressable>
           <Pressable onPress={() => setDate(null)} style={{ alignItems: 'center' }}>
@@ -70,9 +87,9 @@ export default function MyTeam() {
         </View>
       )}
 
-      {!data && !err && <ActivityIndicator color={t.red} />}
-      {!!err && <Body style={{ color: t.loss, fontFamily: FONT.bodyMedium }}>{err}</Body>}
-      {data && (
+      {sub === 'lineup' && !data && !err && <ActivityIndicator color={t.red} />}
+      {sub === 'lineup' && !!err && <Body style={{ color: t.loss, fontFamily: FONT.bodyMedium }}>{err}</Body>}
+      {sub === 'lineup' && data && (
         <>
           {data.editable && <Body style={{ color: t.dim, fontSize: 12, marginBottom: 8, marginLeft: 4 }}>Tap a player to move or swap him.</Body>}
           <Lineup slots={data.slots} showPoints onPress={data.editable ? setSel : undefined} selected={sel?.playerId} />
@@ -88,6 +105,16 @@ export default function MyTeam() {
                   <Display style={{ fontSize: 22 }}>{sel.name}</Display>
                   <Body style={{ color: t.dim, fontSize: 12 }}>{sel.slot.replace(/^B\d$/, 'BN')} · {sel.positions.join(',')} — move to…</Body>
                 </View>
+                {data.editable && isToday && !sel.locked && (
+                  <Pressable onPress={() => {
+                    const who = sel; setSel(null);
+                    const go = () => api.dropPlayer(who.playerId).then(load).catch((e) => say(e instanceof Error ? e.message : 'Could not drop'));
+                    if (Platform.OS === 'web') { if (globalThis.confirm?.(`Drop ${who.name}? He becomes a free agent.`)) go(); }
+                    else Alert.alert(`Drop ${who.name}?`, 'He becomes a free agent.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Drop', style: 'destructive', onPress: go }]);
+                  }} style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+                    <Body style={{ color: t.loss, fontFamily: FONT.bodyBold }}>Drop {sel.name}</Body>
+                  </Pressable>
+                )}
                 {sel.locked ? (
                   <Body style={{ padding: 16, color: t.loss }}>🔒 His game has started, so he's locked for today.</Body>
                 ) : (

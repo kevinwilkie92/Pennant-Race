@@ -178,3 +178,53 @@ export function assignSlots(players: SlotInput[]): Map<number, string> {
 }
 
 export * from './season';
+export * from './waivers';
+
+// ------------------------------------------------------------ placing one more player
+
+export type SeatedPlayer = { playerId: number; positions: string[]; slot: string };
+
+/**
+ * Finds a legal slot for a new player, moving as few existing players as possible: a breadth-first search for the
+ * shortest chain "newcomer takes a slot, its occupant takes another slot, ... the last one takes an open slot".
+ * Returns the new slot for him and for every existing player who has to move, or null if no legal lineup exists.
+ */
+export function placePlayer(
+  current: SeatedPlayer[],
+  add: { playerId: number; positions: string[] },
+): Map<number, string> | null {
+  const positions = new Map<number, string[]>(current.map((p) => [p.playerId, p.positions]));
+  positions.set(add.playerId, add.positions);
+  const slotOf = new Map<number, string>(current.map((p) => [p.playerId, p.slot]));
+  const occupant = new Map<string, number>(current.map((p) => [p.slot, p.playerId]));
+
+  // Prefer exact-position slots, then IF, then Util, then bench, so a hitter doesn't take the bench needlessly.
+  const rank = (label: string) => (label.startsWith('B') ? 3 : label.startsWith('Util') ? 2 : label === 'IF' ? 1 : 0);
+  const options = (pid: number) =>
+    ROSTER_LABELS.filter((l) => canFillSlot(l, positions.get(pid)!)).sort((a, b) => rank(a) - rank(b));
+
+  const wantsSlotOf = new Map<number, number>();      // occupant -> the player who would take his slot
+  const seen = new Set<number>([add.playerId]);
+  const queue: number[] = [add.playerId];
+  for (let i = 0; i < queue.length; i++) {
+    const pid = queue[i];
+    const opts = options(pid);
+    const open = opts.find((l) => !occupant.has(l));
+    if (open) {
+      // Walk the chain back: pid takes `open`; whoever wanted pid's old slot takes it; and so on.
+      const moves = new Map<number, string>([[pid, open]]);
+      let cur = pid;
+      while (wantsSlotOf.has(cur)) {
+        const q = wantsSlotOf.get(cur)!;
+        moves.set(q, slotOf.get(cur)!);
+        cur = q;
+      }
+      return moves;
+    }
+    for (const label of opts) {
+      const o = occupant.get(label)!;
+      if (!seen.has(o)) { seen.add(o); wantsSlotOf.set(o, pid); queue.push(o); }
+    }
+  }
+  return null;
+}

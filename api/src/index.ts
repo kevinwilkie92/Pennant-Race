@@ -10,6 +10,7 @@ import type { AppVars, Env } from './types';
 import type { DraftEvent } from './draft-room';
 import { registerLeague } from './league';
 import { registerLineup } from './lineup';
+import { processWaivers, registerPlayers } from './players';
 import { loadRoster } from './roster';
 
 export { DraftRoom } from './draft-room';
@@ -151,6 +152,8 @@ app.post('/seasons/push', requireAuth, requireCommissioner, async (c) => {
     stmts.push(c.env.DB.prepare("UPDATE season SET status = 'archived' WHERE year = ?").bind(live));
   }
   stmts.push(c.env.DB.prepare("INSERT INTO season (year, status) VALUES (?, 'live')").bind(next));
+  stmts.push(c.env.DB.prepare('UPDATE team SET faab = 300'));                      // FAAB is $300 per season
+  stmts.push(c.env.DB.prepare("UPDATE waiver_claim SET status = 'cancelled' WHERE status = 'pending'"));
   stmts.push(c.env.DB.prepare('INSERT OR IGNORE INTO player_position (player_id, season, position) SELECT player_id, ?, position FROM player_position WHERE season = ?').bind(next, latest.y));
   await c.env.DB.batch(stmts);
   await broadcast(c.env, { type: 'keepers', season: next });
@@ -331,5 +334,12 @@ async function liveSeason(env: Env): Promise<number | null> {
 
 registerLeague(app);
 registerLineup(app);
+registerPlayers(app);
 
-export default app;
+// `fetch` serves the API; `scheduled` runs the nightly waiver processing (see wrangler.toml [triggers]).
+export default {
+  fetch: app.fetch,
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(processWaivers(env).then(() => undefined));
+  },
+};

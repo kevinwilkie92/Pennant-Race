@@ -67,6 +67,13 @@ export type WeekSlot = RosterSlot & { byDay: Record<string, number>; weekTotal: 
 // Demo/testing only: pretend "today" is this date so completed weeks can be viewed before a season starts.
 const AS_OF = process.env.EXPO_PUBLIC_AS_OF ? `&asOf=${process.env.EXPO_PUBLIC_AS_OF}` : '';
 
+export type PoolPlayer = { id: number; name: string; mlbTeam: string | null; pos: string; positions: string[]; ownerId: string | null; watched: boolean };
+export type Claim = {
+  id: number; teamId: string; addId: number; dropId: number | null; bid: number; priority: number; status: string;
+  reason: string | null; addName?: string; dropName?: string | null; processedAt: number | null;
+};
+export type Txn = { id: number; type: 'draft' | 'waiver' | 'trade' | 'add' | 'drop'; teamId: string; faab: number | null; at: number; player: string | null };
+
 export const api = {
   login: (email: string, password: string) =>
     call<{ token: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
@@ -94,6 +101,29 @@ export const api = {
       `/teams/${teamId}/lineup${date ? `?date=${date}` : ''}`),
   moveLineup: (teamId: string, b: { date: string; playerId: number; toSlot: string }) =>
     call<{ ok: true }>(`/teams/${teamId}/lineup`, { method: 'PUT', body: JSON.stringify(b) }),
+  pool: (o: { q?: string; pos?: string; sort?: string; dir?: string; watch?: boolean; all?: boolean; offset?: number; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (o.q) qs.set('q', o.q);
+    if (o.pos && o.pos !== 'ALL') qs.set('pos', o.pos);
+    if (o.sort) qs.set('sort', o.sort);
+    if (o.dir) qs.set('dir', o.dir);
+    if (o.watch) qs.set('watch', '1');
+    if (o.all) qs.set('owned', 'all');
+    qs.set('limit', String(o.limit ?? 60));
+    qs.set('offset', String(o.offset ?? 0));
+    return call<{ season: number | null; total: number; players: PoolPlayer[] }>(`/players/pool?${qs}`);
+  },
+  watch: (playerId: number, watched: boolean) =>
+    call<{ ok: true }>('/watchlist', { method: 'PUT', body: JSON.stringify({ playerId, watched }) }),
+  claims: () => call<{ season: number | null; faab: number; pending: Claim[]; recent: Claim[] }>('/claims'),
+  createClaim: (b: { addPlayerId: number; dropPlayerId?: number | null; bid: number }) =>
+    call<{ id: number }>('/claims', { method: 'POST', body: JSON.stringify(b) }),
+  editClaim: (id: number, b: { bid?: number; dropPlayerId?: number | null; move?: 'up' | 'down' }) =>
+    call<{ ok: true }>(`/claims/${id}`, { method: 'PATCH', body: JSON.stringify(b) }),
+  cancelClaim: (id: number) => call<{ ok: true }>(`/claims/${id}`, { method: 'DELETE' }),
+  processWaivers: () => call<{ won: number; failed: number }>('/waivers/process', { method: 'POST' }),
+  dropPlayer: (playerId: number) => call<{ ok: true }>('/roster/drop', { method: 'POST', body: JSON.stringify({ playerId }) }),
+  transactions: (teamId?: string) => call<Txn[]>(`/transactions?limit=60${teamId ? `&teamId=${teamId}` : ''}`),
   weeks: () => call<{ season: number | null; current: number | null; weeks: WeekInfo[] }>(`/weeks?x=1${AS_OF}`),
   matchups: (week: number) => call<MatchupRow[]>(`/matchups?week=${week}${AS_OF}`),
   standings: () => call<{ season: number | null; playoffTeams: number; rows: StandingRow[] }>(`/standings?x=1${AS_OF}`),

@@ -112,7 +112,29 @@ To preview a finished season in the app, build with `EXPO_PUBLIC_AS_OF=2027-10-0
 - Under the hood: `lineup_history` (one row per slot change with its effective date) lets the feed credit each day's points
   to the slot the player held that day. Not built: "Optimize" (needs projections), lineup views for other teams.
 
-Run `npm run test:e2e` to run every end-to-end suite (keepers, league, lineup) against a fresh local database; no network needed.
+Run `npm run test:e2e` to run every end-to-end suite (keepers, league, lineup, waivers) against a fresh local database; no network needed.
+
+## Players, waivers and FAAB
+
+**Players tab:** *Available* (free agents), *Watchlist* (per user, ☆/★), search that ignores accents, position chips,
+sortable by player / position / team. **+ ADD** opens a claim: a FAAB bid ($0 allowed) and, if you want, a player to drop
+(required when your 26-man roster is full). *Trending* and *Leaders* rank by recent production, so they show a note until the stats feed is connected.
+**My Team → Transactions:** pending claims (reorder priority ▲▼, change the bid, change who you drop, cancel), results of past runs
+(including why a claim lost), and your team's activity. **League → Activity** is the league-wide log. Dropping a player outright is in the lineup sheet.
+
+**Waiver rules** (the README gave only the $300 budget, priorities and editable bids — these are my defaults, easy to change in
+`packages/domain/src/waivers.ts`):
+- Claims are processed together, nightly at 08:00 UTC (Cloudflare cron, see `api/wrangler.toml`) or on demand by the commissioner (**RUN WAIVERS NOW**).
+- Highest bid wins a contested player. Equal bids go to the team earlier in the **rolling waiver order**, which starts alphabetical;
+  a team that wins a claim moves to the back.
+- One team's claims are tried in its own priority order; a failed claim falls through to its next one.
+- A claim can fail for: player already taken, not enough FAAB, roster full without a drop, or the drop is no longer on the roster.
+- A player dropped in a run can't be claimed in that same run, and one added in a run can't be dropped in it.
+- The new player takes the dropped player's slot if he fits; otherwise the smallest set of players shift to make a legal lineup.
+  Past days keep showing the lineup as it was (new players don't appear before they were added).
+- FAAB resets to $300 and pending claims are cancelled when you push to a new season.
+
+Not built yet: trades (Propose / Accept / Reject / Cancel), a waiver-period after drops, injured list, player cards with stats.
 
 ## Stats feed — NOT connected yet
 
@@ -134,9 +156,8 @@ The feed also needs to fill `mlb_game` (first-pitch times, for the lineup lock) 
 Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code, roster / draft-state /
 commissioner sale + undo endpoints with server-side bid validation, live draft broadcast (Durable Object WebSocket),
 the TV draft board, the phone draft companion, the keepers picker + season push, the schedule / standings / matchup /
-bracket engine and screens, lineup editing with daily history and first-pitch locks, and the app's login, My Team, League, and theme switcher
+bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
-Next, roughly in order: connect the stats feed (above), Players / free agents and
-waivers / trades, chat, editing archived draft results, team logo upload (R2), Google/Apple sign-in, and a
+Next, roughly in order: connect the stats feed (above), trades, chat, editing archived draft results, team logo upload (R2), Google/Apple sign-in, and a
 "currently nominated player" strip for the phone companion.

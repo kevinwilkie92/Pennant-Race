@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   maxBid, validateBid, keeperCost, keeperTier, rolloverBucket, ROSTER_SIZE, ROSTER_LABELS,
-  scoreHitter, scorePitcher, assignSlots, hitterEligibility, pitcherEligibility, canFillSlot, playerSubline,
+  scoreHitter, scorePitcher, assignSlots, placePlayer, hitterEligibility, pitcherEligibility, canFillSlot, playerSubline,
 } from '../src';
 
 describe('draft budget', () => {
@@ -111,5 +111,40 @@ describe('assignSlots', () => {
     const m = assignSlots(many);
     expect(m.size).toBe(12); // OF1-4, Util1-2, B1-6 (IF needs an infielder)
     expect(new Set(m.values()).size).toBe(m.size);
+  });
+});
+
+describe('placePlayer', () => {
+  const seat = (playerId: number, slot: string, positions: string[]) => ({ playerId, slot, positions });
+  it('uses an open slot he fits without moving anyone', () => {
+    const m = placePlayer([seat(1, 'SP1', ['SP'])], { playerId: 9, positions: ['SP'] })!;
+    expect([...m]).toEqual([[9, 'SP2']]);
+  });
+  it('takes an open bench slot rather than bumping anyone when no position slot is free', () => {
+    const full = ['SP1', 'SP2', 'SP3', 'SP4'].map((l, i) => seat(i + 1, l, ['SP']));
+    const m = placePlayer(full, { playerId: 9, positions: ['SP'] })!;
+    expect(m.get(9)).toBe('B1');
+    expect(m.size).toBe(1);
+  });
+  it('re-seats an existing player when the only open slot is one the newcomer cannot take', () => {
+    // Every slot is full except RP1; the newcomer is SP-only; a benched RP can take RP1 and free his bench seat.
+    const lineup = ROSTER_LABELS.filter((l) => l !== 'RP1').map((l, i) => {
+      const pos = l.startsWith('SP') ? ['SP'] : l.startsWith('RP') ? ['RP'] : l.startsWith('OF') ? ['OF'] : l.startsWith('B') ? ['RP'] : l === 'C' ? ['C'] : l === '1B' ? ['1B'] : l === '2B' ? ['2B'] : l === '3B' ? ['3B'] : l === 'SS' ? ['SS'] : l === 'IF' ? ['2B'] : ['1B'];
+      return seat(i + 1, l, pos);
+    });
+    const m = placePlayer(lineup, { playerId: 99, positions: ['SP'] })!;
+    expect(m).not.toBeNull();
+    expect(m.get(99)?.startsWith('B')).toBe(true);
+    const moved = [...m].filter(([id]) => id !== 99);
+    expect(moved.length).toBe(1);
+    expect(moved[0][1]).toBe('RP1');
+    // The resulting lineup is legal and has no double-booked slots.
+    const after = new Map(lineup.map((p) => [p.playerId, p.slot]));
+    for (const [id, slot] of m) after.set(id, slot);
+    expect(new Set(after.values()).size).toBe(after.size);
+  });
+  it('returns null when no legal lineup exists', () => {
+    const full = ROSTER_LABELS.map((l, i) => seat(i + 1, l, ['SP', 'RP', 'C', '1B', '2B', '3B', 'SS', 'OF', 'Util']));
+    expect(placePlayer(full, { playerId: 99, positions: ['SP'] })).toBeNull();
   });
 });
