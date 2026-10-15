@@ -7,8 +7,9 @@ import {
   bearer, createSession, destroySession, hashPassword, requireAuth, requireCommissioner, verifyPassword, userForToken,
 } from './auth';
 import type { AppVars, Env } from './types';
-import type { DraftEvent } from './draft-room';
+import { broadcast, room } from './realtime';
 import { registerLeague } from './league';
+import { registerChat } from './chat';
 import { registerLineup } from './lineup';
 import { processWaivers, registerPlayers } from './players';
 import { registerTrades } from './trades';
@@ -22,9 +23,6 @@ app.use('*', cors());
 const DEFAULT_SEASON = 2026;
 const season = (q: string | undefined) => (q && /^\d{4}$/.test(q) ? Number(q) : DEFAULT_SEASON);
 
-const room = (env: Env) => env.DRAFT_ROOM.get(env.DRAFT_ROOM.idFromName('league'));
-const broadcast = (env: Env, ev: DraftEvent) =>
-  room(env).fetch('https://room/broadcast', { method: 'POST', body: JSON.stringify(ev) });
 
 app.get('/', (c) => c.json({ ok: true, service: 'pennant-race-api' }));
 
@@ -337,6 +335,7 @@ registerLeague(app);
 registerLineup(app);
 registerPlayers(app);
 registerTrades(app);
+registerChat(app);
 
 // `fetch` serves the API; `scheduled` runs the nightly waiver processing (see wrangler.toml [triggers]).
 export default {

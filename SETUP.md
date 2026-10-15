@@ -112,7 +112,7 @@ To preview a finished season in the app, build with `EXPO_PUBLIC_AS_OF=2027-10-0
 - Under the hood: `lineup_history` (one row per slot change with its effective date) lets the feed credit each day's points
   to the slot the player held that day. Not built: "Optimize" (needs projections), lineup views for other teams.
 
-Run `npm run test:e2e` to run every end-to-end suite (keepers, league, lineup, waivers, trades, extras) against a fresh local database; no network needed.
+Run `npm run test:e2e` to run every end-to-end suite (keepers, league, lineup, waivers, trades, extras, chat) against a fresh local database; no network needed.
 
 ## Players, waivers and FAAB
 
@@ -168,6 +168,16 @@ need the stats feed**, so the card says so instead of showing numbers.
 
 Not built yet: stats-based views (Trending, Leaders, game log, career), injury notes and 15/60-day IL types, a commissioner screen for league settings beyond the waiver period.
 
+## League chat
+
+Tap 💬 in the header. Messages arrive live over the same WebSocket room the draft uses; the icon shows an unread badge for messages from other teams.
+- **Messages:** up to 500 characters, shown with your team's colour and name; 5 messages per 10 seconds per team; "Load earlier messages" pages back.
+- **Reactions:** tap a chip to add or remove your team's reaction (👍 🔥 😂 😮 ❤️ 👀), or **＋ ⋯** to pick one. Counts update live; your own are outlined.
+- **Pinned announcement:** the commissioner can pin any message (**＋ ⋯ → Pin as announcement**); it shows at the top for everyone. Only one at a time.
+- **Moderation:** you can delete your own messages; the commissioner can delete anyone's (deleting the pinned message clears the announcement).
+
+Not built: direct messages, replies/threads, @mentions, images, typing indicators, push notifications (the badge only updates while the app is open), edit-after-send.
+
 ## Stats feed — NOT connected yet
 
 Points come from the `daily_points` table (`season, date, team_id, player_id, slot, points`); everything above reads it.
@@ -188,8 +198,8 @@ The feed also needs to fill `mlb_game` (first-pitch times, for the lineup lock) 
 Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code, roster / draft-state /
 commissioner sale + undo endpoints with server-side bid validation, live draft broadcast (Durable Object WebSocket),
 the TV draft board, the phone draft companion, the keepers picker + season push, the schedule / standings / matchup /
-bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, and the app's login, My Team, League, and theme switcher
+bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat, and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
-Next, roughly in order: connect the stats feed (above), chat, editing archived draft results, team logo upload (R2), Google/Apple sign-in, and a
+Next, roughly in order: connect the stats feed (above), editing archived draft results, team logo upload (R2), Google/Apple sign-in, and a
 "currently nominated player" strip for the phone companion.

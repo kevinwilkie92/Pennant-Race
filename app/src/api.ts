@@ -87,6 +87,8 @@ export type TradeOffer = {
   reason: string | null; createdAt: number; resolvedAt: number | null; problem: string | null;
 };
 
+export type ChatMessage = { id: number; teamId: string; body: string; createdAt: number; pinned: boolean; reactions: Record<string, string[]> };
+
 export const api = {
   login: (email: string, password: string) =>
     call<{ token: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
@@ -147,6 +149,13 @@ export const api = {
   playerCard: (id: number) => call<PlayerCardData>(`/players/${id}/card`),
   leagueSettings: () => call<{ waiverDays: number }>('/league/settings'),
   setWaiverDays: (waiverDays: number) => call<{ waiverDays: number }>('/league/settings', { method: 'PUT', body: JSON.stringify({ waiverDays }) }),
+  chat: (before?: number) => call<{ messages: ChatMessage[]; hasMore: boolean; pinned: ChatMessage | null; emoji: string[] }>(`/chat?limit=40${before ? `&before=${before}` : ''}`),
+  chatUnread: () => call<{ count: number }>('/chat/unread'),
+  chatRead: (lastId: number) => call<{ ok: true }>('/chat/read', { method: 'POST', body: JSON.stringify({ lastId }) }),
+  chatSend: (body: string) => call<ChatMessage>('/chat', { method: 'POST', body: JSON.stringify({ body }) }),
+  chatReact: (id: number, emoji: string) => call<{ reactions: Record<string, string[]> }>(`/chat/${id}/react`, { method: 'POST', body: JSON.stringify({ emoji }) }),
+  chatPin: (id: number, pinned: boolean) => call<{ pinned: ChatMessage | null }>(`/chat/${id}/pin`, { method: 'PUT', body: JSON.stringify({ pinned }) }),
+  chatDelete: (id: number) => call<{ ok: true }>(`/chat/${id}`, { method: 'DELETE' }),
   weeks: () => call<{ season: number | null; current: number | null; weeks: WeekInfo[] }>(`/weeks?x=1${AS_OF}`),
   matchups: (week: number) => call<MatchupRow[]>(`/matchups?week=${week}${AS_OF}`),
   standings: () => call<{ season: number | null; playoffTeams: number; rows: StandingRow[] }>(`/standings?x=1${AS_OF}`),

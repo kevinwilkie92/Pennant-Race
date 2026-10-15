@@ -7,7 +7,15 @@ export type DraftEvent =
   | { type: 'undo'; season: number; seq: number }
   | { type: 'keepers'; season: number }
   | { type: 'hat'; mlbTeam: string | null }
-  | { type: 'chat'; teamId: string; body: string; at: number };
+  | { type: 'chat'; message: ChatMessage }
+  | { type: 'chat-react'; id: number; reactions: Record<string, string[]> }
+  | { type: 'chat-pin'; pinned: ChatMessage | null }
+  | { type: 'chat-delete'; id: number };
+
+/** A chat message as sent to clients. `reactions` maps an emoji to the team ids that reacted with it. */
+export type ChatMessage = {
+  id: number; teamId: string; body: string; createdAt: number; pinned: boolean; reactions: Record<string, string[]>;
+};
 
 export class DraftRoom {
   private state: DurableObjectState;
