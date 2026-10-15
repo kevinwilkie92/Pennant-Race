@@ -217,6 +217,10 @@ direct messages, and turns gold with an **@** when someone mentioned your team.
   existing one opens that one. Only members can read, post, react, edit or delete; messages reach only their connections, and the commissioner has no special view. Any member can rename the group
   or add a team (*Members*); a team added later only sees what is said after it joins. Anyone can leave, and when the last team leaves the group and its messages are deleted. Group messages
   never appear in the league room or in one-to-one DMs, count toward the same unread badge, and show typing indicators to members only. No @mentions in groups.
+- **Read receipts:** in direct messages and groups, a small "✓ Seen · 3:47 PM" (or "Seen by Rally Cats", "Seen by everyone") appears under your newest message when the other side has read it, live.
+  Not in the league room. It is **on by default** and reciprocal: the *Read receipts* switch at the bottom of the Direct tab turns it off for you, and then nobody sees when you read and you
+  see nobody else's. Turning it back on shows only what was read while it was on, never what you read while it was off. Your unread badges work the same either way. A reader can't claim to
+  have read messages that haven't been sent yet.
 - **Replies:** ＋ ⋯ → ↩ Reply. The reply quotes the original (or says it was deleted); a reply must stay in the same conversation.
 - **@mentions:** type `@` and pick a team (or type `@RC`). Mentions show as the team's current name in gold; mentioned teams get the gold badge. Not used in DMs.
 - **Images:** 📎 picks a photo, shrinks it (longest side 1280px), uploads it, and sends it with or without text. PNG/JPEG/WebP, 2 MB, 10 uploads a minute per team.
@@ -226,7 +230,7 @@ direct messages, and turns gold with an **@** when someone mentioned your team.
 - **Typing indicators:** "Team is typing…" in the league room, or only to the other person in a DM; expires after 4 seconds; rate-limited on the server.
 - **Reactions, pinned announcement, moderation:** as before — the commissioner can pin/delete league-room messages; authors delete their own.
 
-Not built: threads beyond a single quoted reply, push notifications (the badge only updates while the app is open), read receipts, search.
+Not built: threads beyond a single quoted reply, push notifications (the badge only updates while the app is open), search.
 
 ## Team settings: logo and name
 
@@ -273,7 +277,7 @@ Notes: *Trending* is "hottest this week" by points, not "most added". Postseason
 Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code, roster / draft-state /
 commissioner sale + undo endpoints with server-side bid validation, live draft broadcast (Durable Object WebSocket),
 the TV draft board, the phone draft companion, the keepers picker + season push, the schedule / standings / matchup /
-bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, group chats, replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, the live "on the block" nomination (the commissioner's DRAFT click puts the player, leader and bid on the TV board and every phone's NOW BIDDING strip; it clears on cancel, sale or a new hat draw, expires after 15 minutes, and late joiners get it on connect), the MLB stats feed (see its section), Google/Apple sign-in (see its section), archived-draft corrections (on a FINAL season's Draft Log the commissioner can change a price, change who drafted a player, or remove a sale; a team change also moves him on that team's frozen roster, the $300 budget and roster-room rules still apply, and keeper sales and players kept into a later season are locked), and the app's login, My Team, League, and theme switcher
+bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, group chats, read receipts, replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, the live "on the block" nomination (the commissioner's DRAFT click puts the player, leader and bid on the TV board and every phone's NOW BIDDING strip; it clears on cancel, sale or a new hat draw, expires after 15 minutes, and late joiners get it on connect), the MLB stats feed (see its section), Google/Apple sign-in (see its section), archived-draft corrections (on a FINAL season's Draft Log the commissioner can change a price, change who drafted a player, or remove a sale; a team change also moves him on that team's frozen roster, the $300 budget and roster-room rules still apply, and keeper sales and players kept into a later season are locked), and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
-Next, roughly in order: read receipts, search and push notifications.
+Next, roughly in order: search and push notifications.

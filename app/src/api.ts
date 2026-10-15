@@ -109,6 +109,7 @@ export type ChatMessage = {
   replyTo: { id: number; teamId?: string; body?: string; hasImage?: boolean; deleted?: boolean } | null;
 };
 export type DmConversation = { team: string; unread: number; last: { id: number; fromMe: boolean; body: string; hasImage: boolean; createdAt: number } };
+export type ChatReceipt = { teamId: string; lastId: number; at: number | null };
 export type ChatGroup = { id: number; name: string | null; createdBy: string; members: string[] };
 export type GroupConversation = ChatGroup & { unread: number; last: { id: number; teamId: string; fromMe: boolean; body: string; hasImage: boolean; createdAt: number } | null };
 export const chatImageUrl = (key?: string | null) => (key ? `${API_URL}/chat-images/${key}` : null);
@@ -195,14 +196,16 @@ export const api = {
   leagueSettings: () => call<{ waiverDays: number }>('/league/settings'),
   setWaiverDays: (waiverDays: number) => call<{ waiverDays: number }>('/league/settings', { method: 'PUT', body: JSON.stringify({ waiverDays }) }),
   chat: (before?: number) => call<{ messages: ChatMessage[]; hasMore: boolean; pinned: ChatMessage | null; emoji: string[] }>(`/chat?limit=40${before ? `&before=${before}` : ''}`),
-  chatDm: (team: string, before?: number) => call<{ messages: ChatMessage[]; hasMore: boolean }>(`/chat/dm/${team}?limit=40${before ? `&before=${before}` : ''}`),
+  chatDm: (team: string, before?: number) => call<{ messages: ChatMessage[]; hasMore: boolean; receipts: ChatReceipt[] }>(`/chat/dm/${team}?limit=40${before ? `&before=${before}` : ''}`),
   chatGroups: () => call<{ groups: GroupConversation[]; totalUnread: number }>('/chat/groups'),
-  chatGroup: (id: number, before?: number) => call<{ group: ChatGroup; messages: ChatMessage[]; hasMore: boolean }>(`/chat/groups/${id}?limit=40${before ? `&before=${before}` : ''}`),
+  chatGroup: (id: number, before?: number) => call<{ group: ChatGroup; messages: ChatMessage[]; hasMore: boolean; receipts: ChatReceipt[] }>(`/chat/groups/${id}?limit=40${before ? `&before=${before}` : ''}`),
   chatGroupCreate: (teamIds: string[], name?: string) => call<{ group: ChatGroup; existing: boolean }>('/chat/groups', { method: 'POST', body: JSON.stringify({ teamIds, name: name || undefined }) }),
   chatGroupRename: (id: number, name: string) => call<{ group: ChatGroup }>(`/chat/groups/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   chatGroupAdd: (id: number, teamId: string) => call<{ group: ChatGroup }>(`/chat/groups/${id}/members`, { method: 'POST', body: JSON.stringify({ teamId }) }),
   chatGroupLeave: (id: number) => call<{ ok: true }>(`/chat/groups/${id}/members/me`, { method: 'DELETE' }),
   chatGroupRead: (groupId: number, lastId: number) => call<{ ok: true }>('/chat/group-read', { method: 'POST', body: JSON.stringify({ groupId, lastId }) }),
+  chatSettings: () => call<{ readReceipts: boolean }>('/chat/settings'),
+  setChatSettings: (readReceipts: boolean) => call<{ readReceipts: boolean }>('/chat/settings', { method: 'PUT', body: JSON.stringify({ readReceipts }) }),
   chatDms: () => call<{ conversations: DmConversation[]; totalUnread: number }>('/chat/dms'),
   chatDmRead: (team: string, lastId: number) => call<{ ok: true }>('/chat/dm-read', { method: 'POST', body: JSON.stringify({ team, lastId }) }),
   chatUnread: () => call<{ count: number; mentions: number; dm: number }>('/chat/unread'),

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MAX_GROUP, MAX_GROUP_NAME, MIN_GROUP, activeMention, completeMention, groupTitle, splitMentions } from '@pennant/domain';
+import { MAX_GROUP, MAX_GROUP_NAME, MIN_GROUP, activeMention, completeMention, groupTitle, lastSentBy, seenBy, seenLabel, splitMentions } from '@pennant/domain';
 import { api, chatImageUrl, type ChatMessage } from './api';
 import { useAuth } from './auth';
 import { groupIdOf, groupScope, useChat, type Scope } from './chat';
@@ -102,6 +102,15 @@ export function ChatOverlay() {
                 {cv.unread > 0 && <View style={{ backgroundColor: t.red, borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 }}><Body style={{ color: '#fff', fontFamily: FONT.bodyBold, fontSize: 12 }}>{cv.unread}</Body></View>}
               </Pressable>
             ))}
+            <Pressable onPress={() => c.setReceiptsOn(!c.receiptsOn).catch(() => {})} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: t.radius.card, borderColor: t.line, borderWidth: 1, marginTop: 6 }}>
+              <View style={{ flex: 1 }}>
+                <Body style={{ fontFamily: FONT.bodySemi, fontSize: 14 }}>Read receipts</Body>
+                <Body style={{ color: t.dim, fontSize: 12 }}>
+                  {c.receiptsOn ? 'Others can see when you have read their direct and group messages, and you can see theirs.' : 'Off: nobody sees when you read, and you do not see when others read yours.'}
+                </Body>
+              </View>
+              <Display style={{ fontSize: 14, color: c.receiptsOn ? t.green : t.dim }}>{c.receiptsOn ? 'ON' : 'OFF'}</Display>
+            </Pressable>
             <Display style={{ fontSize: 12, letterSpacing: 1.5, color: t.dim, margin: 4, marginTop: 14 }}>NEW MESSAGE</Display>
             {teams.filter((x) => x.id !== c.myTeam && !c.convs.some((cv) => cv.team === x.id)).map((x) => (
               <Pressable key={x.id} onPress={() => c.setView({ kind: 'dm', team: x.id })} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10 }}>
@@ -136,6 +145,10 @@ function Conversation({ scope }: { scope: Scope }) {
   const commissioner = !!me?.user.isCommissioner;
   const name = (id: string) => byId.get(id)?.name ?? id;
   const gidHere = groupIdOf(scope);
+  // "Seen" under my newest message in a private conversation (DMs and groups), if receipts are on for both sides.
+  const lastMine = scope !== 'league' && c.receiptsOn ? lastSentBy(thread.messages, mine) : null;
+  const seen = lastMine != null ? seenBy(lastMine, thread.receipts ?? [], gidHere != null ? Math.max(0, (c.groupFor(gidHere)?.members.length ?? 1) - 1) : 1) : null;
+  const seenText = seen ? seenLabel(seen, (id) => byId.get(id)?.name ?? id, gidHere != null) : null;
   const groupHere = gidHere != null ? c.groupFor(gidHere) : undefined;
 
   const [text, setText] = useState('');
@@ -257,6 +270,11 @@ function Conversation({ scope }: { scope: Scope }) {
                     <Body style={{ fontSize: 12, color: t.dim }}>＋ ⋯</Body>
                   </Pressable>
                 </View>
+                {m.id === lastMine && !!seenText && (
+                  <Body style={{ color: t.dim2, fontSize: 11, marginTop: 4 }}>
+                    ✓ {seenText}{seen?.at && gidHere == null ? ` · ${clock(seen.at)}` : ''}
+                  </Body>
+                )}
                 {menuFor === m.id && (
                   <View style={{ marginTop: 8, padding: 8, borderRadius: t.radius.card, backgroundColor: t.card, borderColor: t.line, borderWidth: 1, gap: 8 }}>
                     <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>

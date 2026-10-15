@@ -72,6 +72,11 @@ async function groupUnread(env: Env, userId: string, team: string | null): Promi
   ).bind(team, userId).first<{ n: number }>())?.n ?? 0;
 }
 
+/** Read receipts are reciprocal: your setting decides both whether you share yours and whether you see anyone's. */
+const wantsReceipts = async (env: Env, userId: string) => (await env.DB.prepare('SELECT read_receipts AS r FROM user WHERE id = ?').bind(userId).first<{ r: number }>())?.r === 1;
+const teamWantsReceipts = async (env: Env, team: string) => (await env.DB.prepare('SELECT read_receipts AS r FROM user WHERE team_id = ?').bind(team).first<{ r: number }>())?.r === 1;
+type ReceiptRow = { teamId: string; lastId: number; at: number | null };
+
 export function registerChat(app: App) {
   const page = async (c: { req: { query: (k: string) => string | undefined }; env: Env }, where: string, binds: unknown[]) => {
     const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 50), 1), 100);
@@ -114,13 +119,36 @@ export function registerChat(app: App) {
     if (!me) return c.json({ error: 'Your account isn’t linked to a team' }, 403);
     if (other === me || !(await allTeamIds(c.env)).includes(other)) return c.json({ error: 'Unknown team' }, 400);
     const p = await page(c, '((m.team_id = ?1 AND m.to_team = ?2) OR (m.team_id = ?2 AND m.to_team = ?1))', [me, other]);
-    return c.json({ ...p, emoji: EMOJI });
+    // Has the other team read my messages? Only if we both share receipts.
+    let receipts: ReceiptRow[] = [];
+    if (await wantsReceipts(c.env, c.get('user').id)) {
+      const r = await c.env.DB.prepare(
+        `SELECT u.team_id AS teamId, d.shared_id AS lastId, d.read_at AS at FROM user u JOIN dm_read d ON d.user_id = u.id AND d.partner = ?2
+          WHERE u.team_id = ?1 AND u.read_receipts = 1 AND d.shared_id > 0`,
+      ).bind(other, me).first<ReceiptRow>();
+      if (r) receipts = [r];
+    }
+    return c.json({ ...p, receipts, emoji: EMOJI });
   });
 
   app.post('/chat/dm-read', requireAuth, async (c) => {
     const { team, lastId } = await c.req.json<{ team: string; lastId: number }>();
     if (typeof team !== 'string' || !Number.isInteger(lastId) || lastId < 0) return c.json({ error: 'Bad request' }, 400);
-    await c.env.DB.prepare('INSERT INTO dm_read (user_id, partner, last_id) VALUES (?, ?, ?) ON CONFLICT(user_id, partner) DO UPDATE SET last_id = MAX(last_id, excluded.last_id)').bind(c.get('user').id, team, lastId).run();
+    const u = c.get('user');
+    if (!u.teamId || team === u.teamId || !(await allTeamIds(c.env)).includes(team)) return c.json({ error: 'Unknown team' }, 400);
+    // A reader can't claim more than has actually been said in this conversation.
+    const top = (await c.env.DB.prepare('SELECT COALESCE(MAX(id), 0) AS m FROM chat_message WHERE (team_id = ?1 AND to_team = ?2) OR (team_id = ?2 AND to_team = ?1)').bind(u.teamId, team).first<{ m: number }>())?.m ?? 0;
+    const upTo = Math.min(lastId, top);
+    const prev = (await c.env.DB.prepare('SELECT shared_id AS l FROM dm_read WHERE user_id = ? AND partner = ?').bind(u.id, team).first<{ l: number }>())?.l ?? 0;
+    const share = await wantsReceipts(c.env, u.id);
+    const now = Date.now();
+    await c.env.DB.prepare(
+      `INSERT INTO dm_read (user_id, partner, last_id, shared_id, read_at) VALUES (?1, ?2, ?3, ?5, ?4)
+       ON CONFLICT(user_id, partner) DO UPDATE SET last_id = MAX(last_id, excluded.last_id),
+         read_at = CASE WHEN ?5 > shared_id THEN ?4 ELSE read_at END, shared_id = MAX(shared_id, ?5)`,
+    ).bind(u.id, team, upTo, now, share ? upTo : 0).run();
+    // Reciprocal: the other team only hears about it if they share their own receipts too.
+    if (share && upTo > prev && (await teamWantsReceipts(c.env, team))) await broadcast(c.env, { type: 'chat-read', scope: 'dm', teamId: u.teamId, lastId: upTo, at: now }, [team]);
     return c.json({ ok: true });
   });
 
@@ -175,7 +203,16 @@ export function registerChat(app: App) {
     const mem = team ? await c.env.DB.prepare('SELECT from_id AS f FROM chat_group_member WHERE group_id = ? AND team_id = ?').bind(id, team).first<{ f: number }>() : null;
     if (!mem) return c.json({ error: 'Group not found' }, 404);
     const p = await page(c, 'm.group_id = ?1 AND m.id > ?2', [id, mem.f]);
-    return c.json({ group: await groupInfo(c.env, id), ...p, emoji: EMOJI });
+    let receipts: ReceiptRow[] = [];
+    if (await wantsReceipts(c.env, c.get('user').id)) {
+      receipts = (await c.env.DB.prepare(
+        `SELECT u.team_id AS teamId, gr.shared_id AS lastId, gr.read_at AS at
+           FROM chat_group_member gm JOIN user u ON u.team_id = gm.team_id AND u.read_receipts = 1
+           JOIN group_read gr ON gr.user_id = u.id AND gr.group_id = gm.group_id
+          WHERE gm.group_id = ?1 AND gm.team_id != ?2 AND gr.shared_id > 0`,
+      ).bind(id, team).all<ReceiptRow>()).results;
+    }
+    return c.json({ group: await groupInfo(c.env, id), ...p, receipts, emoji: EMOJI });
   });
 
   app.patch('/chat/groups/:id', requireAuth, async (c) => {
@@ -239,8 +276,31 @@ export function registerChat(app: App) {
     const { groupId, lastId } = await c.req.json<{ groupId: number; lastId: number }>().catch(() => ({} as { groupId: number; lastId: number }));
     if (!Number.isInteger(groupId) || !Number.isInteger(lastId) || lastId < 0) return c.json({ error: 'Bad request' }, 400);
     if (!(await isMember(c.env, groupId, u.teamId))) return c.json({ error: 'Group not found' }, 404);
-    await c.env.DB.prepare('INSERT INTO group_read (user_id, group_id, last_id) VALUES (?, ?, ?) ON CONFLICT(user_id, group_id) DO UPDATE SET last_id = MAX(last_id, excluded.last_id)').bind(u.id, groupId, lastId).run();
+    const top = (await c.env.DB.prepare('SELECT COALESCE(MAX(id), 0) AS m FROM chat_message WHERE group_id = ?').bind(groupId).first<{ m: number }>())?.m ?? 0;
+    const upTo = Math.min(lastId, top);
+    const prev = (await c.env.DB.prepare('SELECT shared_id AS l FROM group_read WHERE user_id = ? AND group_id = ?').bind(u.id, groupId).first<{ l: number }>())?.l ?? 0;
+    const share = await wantsReceipts(c.env, u.id);
+    const now = Date.now();
+    await c.env.DB.prepare(
+      `INSERT INTO group_read (user_id, group_id, last_id, shared_id, read_at) VALUES (?1, ?2, ?3, ?5, ?4)
+       ON CONFLICT(user_id, group_id) DO UPDATE SET last_id = MAX(last_id, excluded.last_id),
+         read_at = CASE WHEN ?5 > shared_id THEN ?4 ELSE read_at END, shared_id = MAX(shared_id, ?5)`,
+    ).bind(u.id, groupId, upTo, now, share ? upTo : 0).run();
+    if (share && upTo > prev) {
+      const listeners: string[] = [];
+      for (const t of await groupMembers(c.env, groupId)) if (t !== u.teamId && (await teamWantsReceipts(c.env, t))) listeners.push(t);
+      if (listeners.length) await broadcast(c.env, { type: 'chat-read', scope: 'group', group: groupId, teamId: u.teamId!, lastId: upTo, at: now }, listeners);
+    }
     return c.json({ ok: true });
+  });
+
+  // ------------------------------------------------------------------ settings
+  app.get('/chat/settings', requireAuth, async (c) => c.json({ readReceipts: await wantsReceipts(c.env, c.get('user').id) }));
+  app.put('/chat/settings', requireAuth, async (c) => {
+    const { readReceipts } = await c.req.json<{ readReceipts?: unknown }>().catch(() => ({} as { readReceipts?: unknown }));
+    if (typeof readReceipts !== 'boolean') return c.json({ error: 'readReceipts must be true or false' }, 400);
+    await c.env.DB.prepare('UPDATE user SET read_receipts = ? WHERE id = ?').bind(readReceipts ? 1 : 0, c.get('user').id).run();
+    return c.json({ readReceipts });
   });
 
   // ------------------------------------------------------------------ unread

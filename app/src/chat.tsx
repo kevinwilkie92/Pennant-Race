@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { api, type ChatGroup, type ChatMessage, type DmConversation, type GroupConversation } from './api';
+import { api, type ChatGroup, type ChatMessage, type ChatReceipt, type DmConversation, type GroupConversation } from './api';
 import { ChatOverlay } from './ChatOverlay';
 import { useAuth } from './auth';
 import { useRealtime } from './realtime';
@@ -9,7 +9,7 @@ export type Scope = 'league' | string;                       // 'league', the ot
 export type View = { kind: 'league' } | { kind: 'dms' } | { kind: 'dm'; team: string } | { kind: 'group'; id: number } | { kind: 'newgroup' };
 export const groupScope = (id: number) => `group:${id}`;
 export const groupIdOf = (scope: Scope) => (scope.startsWith('group:') ? Number(scope.slice(6)) : null);
-export type Thread = { messages: ChatMessage[]; hasMore: boolean; loaded: boolean };
+export type Thread = { messages: ChatMessage[]; hasMore: boolean; loaded: boolean; receipts?: ChatReceipt[] };
 const EMPTY: Thread = { messages: [], hasMore: false, loaded: false };
 const TYPING_TTL = 4000, TYPING_SEND_GAP = 2500;
 
@@ -22,7 +22,8 @@ export type ChatState = {
   send: (scope: Scope, b: { body?: string; replyTo?: number; imageKey?: string }) => Promise<void>;
   edit: (id: number, body: string) => Promise<void>;
   react: (id: number, emoji: string) => Promise<void>; pin: (id: number, pinned: boolean) => Promise<void>; remove: (id: number) => Promise<void>;
-  loadOlder: (scope: Scope) => Promise<void>; ensureThread: (scope: Scope) => Promise<void>; sendTyping: (scope: Scope) => void;
+  loadOlder: (scope: Scope) => Promise<void>; ensureThread: (scope: Scope) => Promise<ChatMessage[]>; sendTyping: (scope: Scope) => void;
+  receiptsOn: boolean; setReceiptsOn: (on: boolean) => Promise<void>;
   groupFor: (id: number) => ChatGroup | undefined;
   createGroup: (teamIds: string[], name?: string) => Promise<number>;
   renameGroup: (id: number, name: string) => Promise<void>; addToGroup: (id: number, teamId: string) => Promise<void>; leaveGroup: (id: number) => Promise<void>;
@@ -48,6 +49,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [convs, setConvs] = useState<DmConversation[]>([]);
   const [groups, setGroups] = useState<GroupConversation[]>([]);
   const [groupsLoaded, setGroupsLoaded] = useState(false);
+  const [receiptsOn, setReceiptsOnState] = useState(true);
   const [unread, setUnread] = useState({ league: 0, mentions: 0, dm: 0 });
   const [typing, setTyping] = useState<Record<string, Record<string, number>>>({});
   const [, tick] = useState(0);
@@ -81,18 +83,22 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!userId) { setLeague({ ...EMPTY, pinned: null }); setThreads({}); setConvs([]); setGroups([]); setGroupsLoaded(false); setUnread({ league: 0, mentions: 0, dm: 0 }); setLoading(true); return; }
     setLoading(true);
+    api.chatSettings().then((r) => setReceiptsOnState(r.readReceipts)).catch(() => {});
     api.chatUnread().then((r) => setUnread({ league: r.count, mentions: r.mentions, dm: r.dm })).catch(() => {});
     loadDms();
     api.chat().then((r) => { setLeague({ messages: r.messages, hasMore: r.hasMore, loaded: true, pinned: r.pinned }); setEmoji(r.emoji); }).catch(() => {}).finally(() => setLoading(false));
   }, [userId, loadDms]);
 
-  const ensureThread = useCallback(async (scope: Scope) => {
-    if (threadsRef.current[scope]?.loaded) return;
+  // Returns the thread's messages (not read back from state, which hasn't re-rendered yet when this resolves).
+  const ensureThread = useCallback(async (scope: Scope): Promise<ChatMessage[]> => {
+    const have = threadsRef.current[scope];
+    if (have?.loaded) return have.messages;
     try {
       const gid = groupIdOf(scope);
       const r = gid != null ? await api.chatGroup(gid) : await api.chatDm(scope);
-      setThreads((t) => ({ ...t, [scope]: { messages: r.messages, hasMore: r.hasMore, loaded: true } }));
-    } catch { /* shown empty */ }
+      setThreads((t) => ({ ...t, [scope]: { messages: r.messages, hasMore: r.hasMore, loaded: true, receipts: r.receipts } }));
+      return r.messages;
+    } catch { return []; /* shown empty */ }
   }, []);
 
   // Live events.
@@ -129,6 +135,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       setLeague((l) => ({ ...l, messages: l.messages.filter((x) => x.id !== ev.id), pinned: l.pinned && l.pinned.id === ev.id ? null : l.pinned }));
       setThreads((t) => Object.fromEntries(Object.entries(t).map(([k, th]) => [k, { ...th, messages: th.messages.filter((x) => x.id !== ev.id) }])));
       loadDms();
+    } else if (ev.type === 'chat-read') {
+      const key = ev.scope === 'group' ? groupScope(ev.group as number) : (ev.teamId as string);
+      const r: ChatReceipt = { teamId: ev.teamId as string, lastId: ev.lastId as number, at: ev.at as number };
+      setThreads((t) => (t[key] ? { ...t, [key]: { ...t[key], receipts: [...(t[key].receipts ?? []).filter((x) => x.teamId !== r.teamId), r] } } : t));
     } else if (ev.type === 'chat-group') {
       loadDms();
     } else if (ev.type === 'typing') {
@@ -153,8 +163,8 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!open) return;
     if (view.kind === 'league') markRead('league', leagueRef.current.messages);
-    else if (view.kind === 'dm') ensureThread(view.team).then(() => markRead(view.team, threadsRef.current[view.team]?.messages ?? []));
-    else if (view.kind === 'group') { const sc = groupScope(view.id); ensureThread(sc).then(() => markRead(sc, threadsRef.current[sc]?.messages ?? [])); }
+    else if (view.kind === 'dm') ensureThread(view.team).then((msgs) => markRead(view.team, msgs));
+    else if (view.kind === 'group') { const sc = groupScope(view.id); ensureThread(sc).then((msgs) => markRead(sc, msgs)); }
     else loadDms();
   }, [open, view.kind === 'dm' ? view.team : view.kind === 'group' ? view.id : view.kind]);
 
@@ -192,6 +202,14 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       }
     },
     ensureThread,
+    receiptsOn,
+    setReceiptsOn: async (on) => {
+      await api.setChatSettings(on);
+      setReceiptsOnState(on);
+      setThreads({});                                          // receipts are shaped by this setting, so reload what is open
+      const v = viewRef.current;
+      if (v.kind === 'dm') ensureThread(v.team); else if (v.kind === 'group') ensureThread(groupScope(v.id));
+    },
     groupFor: (id) => groups.find((g) => g.id === id),
     createGroup: async (teamIds, name) => { const r = await api.chatGroupCreate(teamIds, name); await loadDms(); return r.group.id; },
     renameGroup: async (id, name) => { await api.chatGroupRename(id, name); await loadDms(); },
@@ -203,7 +221,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       lastTypingSent.current = now;
       wsSend({ type: 'typing', scope });
     },
-  }), [open, view, league, threads, convs, groups, emoji, connected, loading, myTeam, unread, typing, ensureThread, wsSend, loadDms]);
+  }), [open, view, league, threads, convs, groups, receiptsOn, emoji, connected, loading, myTeam, unread, typing, ensureThread, wsSend, loadDms]);
 
   return <Ctx.Provider value={state}>{children}<ChatOverlay /></Ctx.Provider>;
 }

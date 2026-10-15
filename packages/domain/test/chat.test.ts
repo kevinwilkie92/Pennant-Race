@@ -111,3 +111,27 @@ describe('group conversations', () => {
     expect(cleanGroupName(5).ok).toBe(false);
   });
 });
+
+import { lastSentBy, seenBy, seenLabel } from '../src';
+describe('read receipts', () => {
+  it('finds the newest message a team sent', () => {
+    const msgs = [{ id: 1, teamId: 'A' }, { id: 2, teamId: 'B' }, { id: 3, teamId: 'A' }, { id: 4, teamId: 'B' }];
+    expect(lastSentBy(msgs, 'A')).toBe(3); expect(lastSentBy(msgs, 'C')).toBeNull(); expect(lastSentBy([], 'A')).toBeNull(); expect(lastSentBy(msgs, null)).toBeNull();
+  });
+  it('counts a reader as having seen everything up to their marker', () => {
+    const r = [{ teamId: 'B', lastId: 5, at: 100 }, { teamId: 'C', lastId: 3, at: 200 }, { teamId: 'D', lastId: 0, at: null }];
+    expect(seenBy(4, r, 3)).toEqual({ teams: ['B'], at: 100, all: false });
+    expect(seenBy(3, r, 3).teams).toEqual(['B', 'C']);
+    expect(seenBy(3, r, 3).at).toBe(200);
+    expect(seenBy(9, r, 3).teams).toEqual([]);
+    expect(seenBy(1, [{ teamId: 'B', lastId: 1, at: 5 }], 1).all).toBe(true);
+    expect(seenBy(1, [], 0).all).toBe(false);
+  });
+  it('words the label', () => {
+    const name = (t: string) => `Team ${t}`;
+    expect(seenLabel({ teams: [], all: false }, name, true)).toBeNull();
+    expect(seenLabel({ teams: ['B'], all: true }, name, false)).toBe('Seen');
+    expect(seenLabel({ teams: ['B', 'C'], all: false }, name, true)).toBe('Seen by Team B, Team C');
+    expect(seenLabel({ teams: ['B', 'C'], all: true }, name, true)).toBe('Seen by everyone');
+  });
+});

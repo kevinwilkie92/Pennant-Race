@@ -28,6 +28,7 @@ export type DraftEvent =
   | { type: 'chat-react'; id: number; reactions: Record<string, string[]> }
   | { type: 'chat-pin'; pinned: ChatMessage | null }
   | { type: 'chat-delete'; id: number }
+  | { type: 'chat-read'; scope: 'dm' | 'group'; group?: number; teamId: string; lastId: number; at: number }   // someone read up to lastId
   | { type: 'chat-group'; id: number }              // a group was created, renamed, or its members changed
   | { type: 'typing'; teamId: string; scope: 'league' | 'dm' | 'group'; group?: number };
 

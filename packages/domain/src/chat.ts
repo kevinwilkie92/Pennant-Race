@@ -118,3 +118,27 @@ export function cleanGroupName(raw: unknown): { ok: true; name: string | null } 
   if ([...name].length > MAX_GROUP_NAME) return { ok: false, reason: `Names are limited to ${MAX_GROUP_NAME} characters` };
   return { ok: true, name: name || null };
 }
+
+// ------------------------------------------------------------ read receipts
+
+export type Receipt = { teamId: string; lastId: number; at: number | null };
+
+/** The id of the newest message `team` has sent in this list (messages are oldest → newest). */
+export function lastSentBy(messages: { id: number; teamId: string }[], team: string | null): number | null {
+  if (!team) return null;
+  for (let i = messages.length - 1; i >= 0; i--) if (messages[i].teamId === team) return messages[i].id;
+  return null;
+}
+
+/** Who has read message `id`, out of everyone else in the conversation. */
+export function seenBy(id: number, receipts: Receipt[], others: number): { teams: string[]; at: number | null; all: boolean } {
+  const seen = receipts.filter((r) => r.lastId >= id);
+  return { teams: seen.map((r) => r.teamId), at: seen.reduce<number | null>((t, r) => (r.at != null && (t == null || r.at > t) ? r.at : t), null), all: others > 0 && seen.length === others };
+}
+
+/** "Seen", "Seen by RC, MJ", or "Seen by everyone" for a group; null if nobody has. */
+export function seenLabel(s: { teams: string[]; all: boolean }, name: (t: string) => string, group: boolean): string | null {
+  if (s.teams.length === 0) return null;
+  if (!group) return 'Seen';
+  return s.all ? 'Seen by everyone' : `Seen by ${s.teams.map(name).join(', ')}`;
+}
