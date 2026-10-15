@@ -90,7 +90,13 @@ export type TradeOffer = {
   reason: string | null; createdAt: number; resolvedAt: number | null; problem: string | null;
 };
 
-export type ChatMessage = { id: number; teamId: string; body: string; createdAt: number; pinned: boolean; reactions: Record<string, string[]> };
+export type ChatMessage = {
+  id: number; teamId: string; toTeam: string | null; body: string; createdAt: number; editedAt: number | null; pinned: boolean;
+  reactions: Record<string, string[]>; imageKey: string | null; mentions: string[];
+  replyTo: { id: number; teamId?: string; body?: string; hasImage?: boolean; deleted?: boolean } | null;
+};
+export type DmConversation = { team: string; unread: number; last: { id: number; fromMe: boolean; body: string; hasImage: boolean; createdAt: number } };
+export const chatImageUrl = (key?: string | null) => (key ? `${API_URL}/chat-images/${key}` : null);
 
 export const api = {
   login: (email: string, password: string) =>
@@ -153,9 +159,19 @@ export const api = {
   leagueSettings: () => call<{ waiverDays: number }>('/league/settings'),
   setWaiverDays: (waiverDays: number) => call<{ waiverDays: number }>('/league/settings', { method: 'PUT', body: JSON.stringify({ waiverDays }) }),
   chat: (before?: number) => call<{ messages: ChatMessage[]; hasMore: boolean; pinned: ChatMessage | null; emoji: string[] }>(`/chat?limit=40${before ? `&before=${before}` : ''}`),
-  chatUnread: () => call<{ count: number }>('/chat/unread'),
+  chatDm: (team: string, before?: number) => call<{ messages: ChatMessage[]; hasMore: boolean }>(`/chat/dm/${team}?limit=40${before ? `&before=${before}` : ''}`),
+  chatDms: () => call<{ conversations: DmConversation[]; totalUnread: number }>('/chat/dms'),
+  chatDmRead: (team: string, lastId: number) => call<{ ok: true }>('/chat/dm-read', { method: 'POST', body: JSON.stringify({ team, lastId }) }),
+  chatUnread: () => call<{ count: number; mentions: number; dm: number }>('/chat/unread'),
   chatRead: (lastId: number) => call<{ ok: true }>('/chat/read', { method: 'POST', body: JSON.stringify({ lastId }) }),
-  chatSend: (body: string) => call<ChatMessage>('/chat', { method: 'POST', body: JSON.stringify({ body }) }),
+  chatSend: (b: { body?: string; replyTo?: number; toTeam?: string; imageKey?: string }) => call<ChatMessage>('/chat', { method: 'POST', body: JSON.stringify(b) }),
+  chatEdit: (id: number, body: string) => call<ChatMessage>(`/chat/${id}`, { method: 'PATCH', body: JSON.stringify({ body }) }),
+  chatUpload: async (image: Blob) => {
+    const res = await fetch(`${API_URL}/chat/image`, { method: 'POST', headers: { 'content-type': image.type || 'application/octet-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: image });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(res.status, (body as { error?: string }).error ?? `Upload failed (${res.status})`);
+    return body as { imageKey: string };
+  },
   chatReact: (id: number, emoji: string) => call<{ reactions: Record<string, string[]> }>(`/chat/${id}/react`, { method: 'POST', body: JSON.stringify({ emoji }) }),
   chatPin: (id: number, pinned: boolean) => call<{ pinned: ChatMessage | null }>(`/chat/${id}/pin`, { method: 'PUT', body: JSON.stringify({ pinned }) }),
   chatDelete: (id: number) => call<{ ok: true }>(`/chat/${id}`, { method: 'DELETE' }),

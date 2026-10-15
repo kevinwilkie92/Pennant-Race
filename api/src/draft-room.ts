@@ -1,6 +1,14 @@
-// One Durable Object per league. Holds the live hat-draw state and fans out events
-// (sales, undo, hat draws, chat) over WebSockets so the TV board, commissioner and phones stay in sync.
-// D1 remains the source of truth for sales; the DO only broadcasts.
+// One Durable Object per league. It fans events out over WebSockets so every client stays in sync
+// (draft sales, hat draws, keepers, chat, team changes) and relays typing indicators.
+// D1 remains the source of truth; the DO only broadcasts. Each socket is tagged with its team id so
+// private events (direct messages) reach only the people they concern.
+
+/** A chat message as sent to clients. `reactions` maps an emoji to the team ids that reacted with it. */
+export type ChatMessage = {
+  id: number; teamId: string; toTeam: string | null; body: string; createdAt: number; editedAt: number | null; pinned: boolean;
+  reactions: Record<string, string[]>; imageKey: string | null; mentions: string[];
+  replyTo: { id: number; teamId?: string; body?: string; hasImage?: boolean; deleted?: boolean } | null;
+};
 
 export type DraftEvent =
   | { type: 'sale'; season: number; playerId: number; teamId: string; price: number; seq: number }
@@ -9,14 +17,13 @@ export type DraftEvent =
   | { type: 'team'; id: string }                    // a team's name or logo changed
   | { type: 'hat'; mlbTeam: string | null }
   | { type: 'chat'; message: ChatMessage }
+  | { type: 'chat-edit'; message: ChatMessage }
   | { type: 'chat-react'; id: number; reactions: Record<string, string[]> }
   | { type: 'chat-pin'; pinned: ChatMessage | null }
-  | { type: 'chat-delete'; id: number };
+  | { type: 'chat-delete'; id: number }
+  | { type: 'typing'; teamId: string; scope: 'league' | 'dm' };
 
-/** A chat message as sent to clients. `reactions` maps an emoji to the team ids that reacted with it. */
-export type ChatMessage = {
-  id: number; teamId: string; body: string; createdAt: number; pinned: boolean; reactions: Record<string, string[]>;
-};
+const TYPING_MIN_GAP_MS = 800;
 
 export class DraftRoom {
   private state: DurableObjectState;
@@ -30,19 +37,23 @@ export class DraftRoom {
 
     if (url.pathname === '/ws') {
       if (req.headers.get('Upgrade') !== 'websocket') return new Response('Expected websocket', { status: 426 });
+      const team = req.headers.get('x-team-id') ?? '';          // set by the Worker after checking the token — clients can't choose it
       const pair = new WebSocketPair();
-      this.state.acceptWebSocket(pair[1]); // hibernation API: socket survives DO eviction
+      this.state.acceptWebSocket(pair[1], team ? [team] : []);  // hibernation API: the socket survives DO eviction
+      pair[1].serializeAttachment({ team, lastTyping: 0 });
       const hat = (await this.state.storage.get<string | null>('hat')) ?? null;
       pair[1].send(JSON.stringify({ type: 'hat', mlbTeam: hat } satisfies DraftEvent));
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
 
     if (url.pathname === '/broadcast' && req.method === 'POST') {
-      const ev = (await req.json()) as DraftEvent;
+      const { ev, to } = (await req.json()) as { ev: DraftEvent; to?: string[] };
       if (ev.type === 'hat') await this.state.storage.put('hat', ev.mlbTeam);
       const msg = JSON.stringify(ev);
-      for (const ws of this.state.getWebSockets()) {
-        try { ws.send(msg); } catch { /* closed; runtime cleans up */ }
+      // `to` limits delivery to sockets tagged with those teams (direct messages). No `to` means everyone.
+      const targets = to ? [...new Set(to.flatMap((t) => this.state.getWebSockets(t)))] : this.state.getWebSockets();
+      for (const ws of targets) {
+        try { ws.send(msg); } catch { /* closed; the runtime cleans up */ }
       }
       return new Response('ok');
     }
@@ -53,7 +64,29 @@ export class DraftRoom {
     return new Response('Not found', { status: 404 });
   }
 
-  // Clients are read-only listeners; ignore inbound messages (writes go through the authenticated REST API).
-  webSocketMessage() {}
+  // Clients are listeners; the only thing they may send is a typing signal. Everything else goes through the
+  // authenticated REST API.
+  webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer) {
+    if (typeof raw !== 'string' || raw.length > 200) return;
+    let m: { type?: string; scope?: string };
+    try { m = JSON.parse(raw); } catch { return; }
+    if (m.type !== 'typing' || typeof m.scope !== 'string' || !/^(league|[A-Za-z0-9]{1,8})$/.test(m.scope)) return;
+
+    const att = (ws.deserializeAttachment() ?? {}) as { team?: string; lastTyping?: number };
+    if (!att.team) return;
+    const now = Date.now();
+    if (now - (att.lastTyping ?? 0) < TYPING_MIN_GAP_MS) return;     // cheap flood protection
+    ws.serializeAttachment({ ...att, lastTyping: now });
+
+    const league = m.scope === 'league';
+    const ev: DraftEvent = { type: 'typing', teamId: att.team, scope: league ? 'league' : 'dm' };
+    // league typing goes to everyone else; a DM typing signal goes only to the person it is addressed to
+    const targets = league ? this.state.getWebSockets() : this.state.getWebSockets(m.scope);
+    for (const t of targets) {
+      if (t === ws) continue;
+      try { t.send(JSON.stringify(ev)); } catch { /* closed */ }
+    }
+  }
+
   webSocketClose(ws: WebSocket) { try { ws.close(); } catch { /* already closed */ } }
 }

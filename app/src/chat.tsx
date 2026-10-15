@@ -1,240 +1,179 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { api, type ChatMessage, type Team } from './api';
+import { api, type ChatMessage, type DmConversation } from './api';
+import { ChatOverlay } from './ChatOverlay';
 import { useAuth } from './auth';
 import { useRealtime } from './realtime';
-import { FONT, useTheme } from './theme';
-import { TeamAvatar } from './TeamAvatar';
-import { Body, Display } from './ui';
+import { useTeams } from './teams';
 
-const MAX = 500;
-type ChatState = {
-  open: boolean; setOpen: (v: boolean) => void; unread: number;
-  messages: ChatMessage[]; pinned: ChatMessage | null; hasMore: boolean; loading: boolean; emoji: string[];
-  teams: Map<string, Team>; connected: boolean;
-  send: (body: string) => Promise<void>; react: (id: number, emoji: string) => Promise<void>;
-  pin: (id: number, pinned: boolean) => Promise<void>; remove: (id: number) => Promise<void>; loadOlder: () => Promise<void>;
+export type Scope = 'league' | string;                       // 'league', or the other team's id for a direct-message thread
+export type View = { kind: 'league' } | { kind: 'dms' } | { kind: 'dm'; team: string };
+export type Thread = { messages: ChatMessage[]; hasMore: boolean; loaded: boolean };
+const EMPTY: Thread = { messages: [], hasMore: false, loaded: false };
+const TYPING_TTL = 4000, TYPING_SEND_GAP = 2500;
+
+export type ChatState = {
+  open: boolean; setOpen: (v: boolean) => void; view: View; setView: (v: View) => void;
+  unread: { league: number; mentions: number; dm: number; total: number };
+  league: Thread & { pinned: ChatMessage | null }; threads: Record<string, Thread>; convs: DmConversation[];
+  emoji: string[]; connected: boolean; loading: boolean; myTeam: string | null;
+  typingIn: (scope: Scope) => string[];                      // team ids currently typing there
+  send: (scope: Scope, b: { body?: string; replyTo?: number; imageKey?: string }) => Promise<void>;
+  edit: (id: number, body: string) => Promise<void>;
+  react: (id: number, emoji: string) => Promise<void>; pin: (id: number, pinned: boolean) => Promise<void>; remove: (id: number) => Promise<void>;
+  loadOlder: (scope: Scope) => Promise<void>; ensureThread: (team: string) => Promise<void>; sendTyping: (scope: Scope) => void;
 };
 const Ctx = createContext<ChatState | null>(null);
 export const useChat = () => useContext(Ctx)!;
 
+const merge = (list: ChatMessage[], m: ChatMessage) => (list.some((x) => x.id === m.id) ? list.map((x) => (x.id === m.id ? m : x)) : [...list, m]);
+
 export function ChatProvider({ children }: { children: React.ReactNode }) {
-  const { me, refresh } = useAuth();
-  const { subscribe, connected } = useRealtime();
-  const [open, setOpen] = useState(false);
-  const [unread, setUnread] = useState(0);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [pinned, setPinned] = useState<ChatMessage | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [emoji, setEmoji] = useState<string[]>(['👍', '🔥', '😂', '😮', '❤️', '👀']);
-  const [teams, setTeams] = useState<Map<string, Team>>(new Map());
-  const openRef = useRef(open);
-  openRef.current = open;
+  const { me } = useAuth();
+  const { subscribe, connected, send: wsSend } = useRealtime();
+  useTeams();                                                // (keeps team names live for the overlay)
+  const userId = me?.user.id ?? null;
   const myTeam = me?.user.teamId ?? null;
 
-  const markRead = useCallback((list: ChatMessage[]) => {
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<View>({ kind: 'league' });
+  const [loading, setLoading] = useState(true);
+  const [emoji, setEmoji] = useState<string[]>(['👍', '🔥', '😂', '😮', '❤️', '👀']);
+  const [league, setLeague] = useState<Thread & { pinned: ChatMessage | null }>({ ...EMPTY, pinned: null });
+  const [threads, setThreads] = useState<Record<string, Thread>>({});
+  const [convs, setConvs] = useState<DmConversation[]>([]);
+  const [unread, setUnread] = useState({ league: 0, mentions: 0, dm: 0 });
+  const [typing, setTyping] = useState<Record<string, Record<string, number>>>({});
+  const [, tick] = useState(0);
+  const openRef = useRef(open), viewRef = useRef(view);
+  openRef.current = open; viewRef.current = view;
+  const threadsRef = useRef(threads); threadsRef.current = threads;
+  const leagueRef = useRef(league); leagueRef.current = league;
+  const lastTypingSent = useRef(0);
+
+  const scopeOf = useCallback((m: ChatMessage): Scope => (m.toTeam ? (m.teamId === myTeam ? m.toTeam : m.teamId) : 'league'), [myTeam]);
+  const watching = (scope: Scope) => openRef.current && (scope === 'league' ? viewRef.current.kind === 'league' : viewRef.current.kind === 'dm' && (viewRef.current as { team: string }).team === scope);
+
+  const loadDms = useCallback(async () => {
+    try { const r = await api.chatDms(); setConvs(r.conversations); setUnread((u) => ({ ...u, dm: r.totalUnread })); } catch { /* keep */ }
+  }, []);
+
+  const markRead = useCallback((scope: Scope, list: ChatMessage[]) => {
     const last = list.length ? list[list.length - 1].id : 0;
-    if (last) api.chatRead(last).catch(() => {});
-    setUnread(0);
-  }, []);
+    if (!last) return;
+    if (scope === 'league') { api.chatRead(last).catch(() => {}); setUnread((u) => ({ ...u, league: 0, mentions: 0 })); }
+    else { api.chatDmRead(scope, last).then(loadDms).catch(() => {}); }
+  }, [loadDms]);
 
+  // Initial load (and reset on sign-out).
   useEffect(() => {
-    api.teams().then((t) => setTeams(new Map(t.map((x) => [x.id, x])))).catch(() => {});
-    api.chatUnread().then((r) => setUnread(r.count)).catch(() => {});
-    api.chat().then((r) => { setMessages(r.messages); setPinned(r.pinned); setHasMore(r.hasMore); setEmoji(r.emoji); }).catch(() => {}).finally(() => setLoading(false));
+    if (!userId) { setLeague({ ...EMPTY, pinned: null }); setThreads({}); setConvs([]); setUnread({ league: 0, mentions: 0, dm: 0 }); setLoading(true); return; }
+    setLoading(true);
+    api.chatUnread().then((r) => setUnread({ league: r.count, mentions: r.mentions, dm: r.dm })).catch(() => {});
+    loadDms();
+    api.chat().then((r) => { setLeague({ messages: r.messages, hasMore: r.hasMore, loaded: true, pinned: r.pinned }); setEmoji(r.emoji); }).catch(() => {}).finally(() => setLoading(false));
+  }, [userId, loadDms]);
+
+  const ensureThread = useCallback(async (team: string) => {
+    if (threadsRef.current[team]?.loaded) return;
+    try { const r = await api.chatDm(team); setThreads((t) => ({ ...t, [team]: { messages: r.messages, hasMore: r.hasMore, loaded: true } })); } catch { /* shown empty */ }
   }, []);
 
-  // Live updates.
+  // Live events.
   useEffect(() => subscribe((ev) => {
+    const applyAll = (fn: (m: ChatMessage) => ChatMessage) => {
+      setLeague((l) => ({ ...l, messages: l.messages.map(fn), pinned: l.pinned ? fn(l.pinned) : null }));
+      setThreads((t) => Object.fromEntries(Object.entries(t).map(([k, th]) => [k, { ...th, messages: th.messages.map(fn) }])));
+    };
     if (ev.type === 'chat') {
       const m = ev.message as ChatMessage;
-      setMessages((prev) => {
-        if (prev.some((x) => x.id === m.id)) return prev;
-        const next = [...prev, m];
-        if (openRef.current) markRead(next);
-        return next;
-      });
-      if (!openRef.current && m.teamId !== myTeam) setUnread((n) => n + 1);
+      const scope = scopeOf(m);
+      if (scope === 'league') {
+        setLeague((l) => ({ ...l, messages: merge(l.messages, m) }));
+        if (m.teamId !== myTeam) {
+          if (watching('league')) markRead('league', [...leagueRef.current.messages, m]);
+          else setUnread((u) => ({ ...u, league: u.league + 1, mentions: u.mentions + (myTeam && m.mentions.includes(myTeam) ? 1 : 0) }));
+        }
+      } else {
+        setThreads((t) => (t[scope]?.loaded ? { ...t, [scope]: { ...t[scope], messages: merge(t[scope].messages, m) } } : t));
+        if (m.teamId !== myTeam && watching(scope)) markRead(scope, [...(threadsRef.current[scope]?.messages ?? []), m]);
+        else loadDms();
+      }
+      setTyping((t) => { const k = scope; if (!t[k]?.[m.teamId]) return t; const { [m.teamId]: _x, ...rest } = t[k]; return { ...t, [k]: rest }; });
+    } else if (ev.type === 'chat-edit') {
+      const m = ev.message as ChatMessage;
+      applyAll((x) => (x.id === m.id ? m : x));
+      if (m.toTeam) loadDms();
     } else if (ev.type === 'chat-react') {
-      setMessages((prev) => prev.map((x) => (x.id === ev.id ? { ...x, reactions: ev.reactions as ChatMessage['reactions'] } : x)));
-      setPinned((p) => (p && p.id === ev.id ? { ...p, reactions: ev.reactions as ChatMessage['reactions'] } : p));
+      applyAll((x) => (x.id === ev.id ? { ...x, reactions: ev.reactions as ChatMessage['reactions'] } : x));
     } else if (ev.type === 'chat-pin') {
       const pm = ev.pinned as ChatMessage | null;
-      setPinned(pm);
-      setMessages((prev) => prev.map((x) => ({ ...x, pinned: !!pm && x.id === pm.id })));
-    } else if (ev.type === 'team') {
-      // someone changed their team name or logo
-      api.teams().then((t) => setTeams(new Map(t.map((x) => [x.id, x])))).catch(() => {});
-      if (ev.id === myTeam) refresh();
+      setLeague((l) => ({ ...l, pinned: pm, messages: l.messages.map((x) => ({ ...x, pinned: !!pm && x.id === pm.id })) }));
     } else if (ev.type === 'chat-delete') {
-      setMessages((prev) => prev.filter((x) => x.id !== ev.id));
-      setPinned((p) => (p && p.id === ev.id ? null : p));
+      setLeague((l) => ({ ...l, messages: l.messages.filter((x) => x.id !== ev.id), pinned: l.pinned && l.pinned.id === ev.id ? null : l.pinned }));
+      setThreads((t) => Object.fromEntries(Object.entries(t).map(([k, th]) => [k, { ...th, messages: th.messages.filter((x) => x.id !== ev.id) }])));
+      loadDms();
+    } else if (ev.type === 'typing') {
+      const scope = ev.scope === 'league' ? 'league' : (ev.teamId as string);
+      setTyping((t) => ({ ...t, [scope]: { ...(t[scope] ?? {}), [ev.teamId as string]: Date.now() + TYPING_TTL } }));
     }
-  }), [subscribe, myTeam, markRead]);
+  }), [subscribe, myTeam, scopeOf, markRead, loadDms]);
 
-  // Opening the overlay reads everything.
-  useEffect(() => { if (open) markRead(messages); }, [open]);
+  // Typing indicators expire on their own.
+  const anyTyping = Object.values(typing).some((v) => Object.keys(v).length > 0);
+  useEffect(() => {
+    if (!anyTyping) return;
+    const id = setInterval(() => {
+      const now = Date.now();
+      setTyping((t) => Object.fromEntries(Object.entries(t).map(([k, v]) => [k, Object.fromEntries(Object.entries(v).filter(([, exp]) => exp > now))])));
+      tick((n) => n + 1);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [anyTyping]);
+
+  // Looking at a conversation reads it.
+  useEffect(() => {
+    if (!open) return;
+    if (view.kind === 'league') markRead('league', leagueRef.current.messages);
+    else if (view.kind === 'dm') ensureThread(view.team).then(() => markRead(view.team, threadsRef.current[view.team]?.messages ?? []));
+    else loadDms();
+  }, [open, view.kind === 'dm' ? view.team : view.kind]);
 
   const state = useMemo<ChatState>(() => ({
-    open, setOpen, unread, messages, pinned, hasMore, loading, emoji, teams, connected,
-    send: async (body) => {
-      const m = await api.chatSend(body);
-      setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));   // the live event may arrive first
+    open, setOpen, view, setView, league, threads, convs, emoji, connected, loading, myTeam,
+    unread: { ...unread, total: unread.league + unread.dm },
+    typingIn: (scope) => Object.entries(typing[scope] ?? {}).filter(([, exp]) => exp > Date.now()).map(([id]) => id),
+    send: async (scope, b) => {
+      const m = await api.chatSend({ ...b, toTeam: scope === 'league' ? undefined : scope });
+      if (scope === 'league') setLeague((l) => ({ ...l, messages: merge(l.messages, m) }));
+      else { setThreads((t) => ({ ...t, [scope]: { ...(t[scope] ?? EMPTY), loaded: true, messages: merge(t[scope]?.messages ?? [], m) } })); loadDms(); }
     },
-    react: async (id, e) => { await api.chatReact(id, e); },                             // the broadcast updates everyone, including us
+    edit: async (id, body) => {
+      const m = await api.chatEdit(id, body);
+      setLeague((l) => ({ ...l, messages: l.messages.map((x) => (x.id === id ? m : x)), pinned: l.pinned?.id === id ? m : l.pinned }));
+      setThreads((t) => Object.fromEntries(Object.entries(t).map(([k, th]) => [k, { ...th, messages: th.messages.map((x) => (x.id === id ? m : x)) }])));
+    },
+    react: async (id, e) => { await api.chatReact(id, e); },
     pin: async (id, p) => { await api.chatPin(id, p); },
     remove: async (id) => { await api.chatDelete(id); },
-    loadOlder: async () => {
-      if (!messages.length) return;
-      const r = await api.chat(messages[0].id);
-      setMessages((prev) => [...r.messages, ...prev]);
-      setHasMore(r.hasMore);
+    loadOlder: async (scope) => {
+      if (scope === 'league') {
+        const first = leagueRef.current.messages[0]; if (!first) return;
+        const r = await api.chat(first.id);
+        setLeague((l) => ({ ...l, messages: [...r.messages, ...l.messages], hasMore: r.hasMore }));
+      } else {
+        const first = threadsRef.current[scope]?.messages[0]; if (!first) return;
+        const r = await api.chatDm(scope, first.id);
+        setThreads((t) => ({ ...t, [scope]: { ...t[scope], messages: [...r.messages, ...t[scope].messages], hasMore: r.hasMore } }));
+      }
     },
-  }), [open, unread, messages, pinned, hasMore, loading, emoji, teams, connected]);
+    ensureThread,
+    sendTyping: (scope) => {
+      const now = Date.now();
+      if (now - lastTypingSent.current < TYPING_SEND_GAP) return;
+      lastTypingSent.current = now;
+      wsSend({ type: 'typing', scope });
+    },
+  }), [open, view, league, threads, convs, emoji, connected, loading, myTeam, unread, typing, ensureThread, wsSend, loadDms]);
 
   return <Ctx.Provider value={state}>{children}<ChatOverlay /></Ctx.Provider>;
-}
-
-const clock = (ms: number) => {
-  const d = new Date(ms), now = new Date();
-  return d.toDateString() === now.toDateString()
-    ? d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-    : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-};
-
-function ChatOverlay() {
-  const c = useChat();
-  const { me } = useAuth();
-  const { t } = useTheme();
-  const insets = useSafeAreaInsets();
-  const [text, setText] = useState('');
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [menuFor, setMenuFor] = useState<number | null>(null);      // which message has its reaction picker / actions open
-  const scroller = useRef<ScrollView>(null);
-  const stick = useRef(true);
-  const mine = me?.user.teamId ?? null;
-  const commissioner = !!me?.user.isCommissioner;
-
-  const submit = async () => {
-    const body = text.trim();
-    if (!body || busy) return;
-    setBusy(true); setErr('');
-    try { await c.send(body); setText(''); stick.current = true; }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Could not send'); }
-    finally { setBusy(false); }
-  };
-  const act = (fn: () => Promise<unknown>) => fn().catch((e) => setErr(e instanceof Error ? e.message : 'Failed'));
-  const avatar = (teamId: string, size = 34) => {
-    const tm = c.teams.get(teamId);
-    return <TeamAvatar id={teamId} color={tm?.color ?? t.dim2} logoKey={tm?.logoKey} size={size} />;
-  };
-
-  const Reactions = ({ m }: { m: ChatMessage }) => {
-    const entries = Object.entries(m.reactions);
-    return (
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
-        {entries.map(([e, who]) => {
-          const on = !!mine && who.includes(mine);
-          return (
-            <Pressable key={e} onPress={() => act(() => c.react(m.id, e))}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, borderWidth: 1, borderColor: on ? t.red : t.line, backgroundColor: on ? t.card2 : 'transparent' }}>
-              <Body style={{ fontSize: 13 }}>{e}</Body>
-              <Body style={{ fontFamily: FONT.num, fontSize: 12, color: on ? t.text : t.dim }}>{who.length}</Body>
-            </Pressable>
-          );
-        })}
-        <Pressable onPress={() => setMenuFor(menuFor === m.id ? null : m.id)} hitSlop={6}
-          style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, borderWidth: 1, borderColor: t.line }}>
-          <Body style={{ fontSize: 12, color: t.dim }}>＋ ⋯</Body>
-        </Pressable>
-      </View>
-    );
-  };
-
-  return (
-    <Modal visible={c.open} animationType="slide" onRequestClose={() => c.setOpen(false)}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: t.bg }}>
-        <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: t.panel, borderBottomColor: t.line, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{ flex: 1 }}>
-            <Display style={{ fontSize: 22 }}>League Chat</Display>
-            <Body style={{ color: c.connected ? t.green : t.dim2, fontSize: 11 }}>{c.connected ? '● Live' : 'Reconnecting…'}</Body>
-          </View>
-          <Pressable onPress={() => c.setOpen(false)} hitSlop={12}><Display style={{ fontSize: 15, color: t.red }}>CLOSE</Display></Pressable>
-        </View>
-
-        {c.pinned && (
-          <View style={{ backgroundColor: 'rgba(209,154,31,0.14)', borderBottomColor: 'rgba(209,154,31,0.35)', borderBottomWidth: 1, padding: 12 }}>
-            <Body style={{ color: t.gold, fontFamily: FONT.bodyBold, fontSize: 11, letterSpacing: 1 }}>📌 COMMISSIONER ANNOUNCEMENT</Body>
-            <Body style={{ marginTop: 3, fontSize: 14 }}>{c.pinned.body}</Body>
-          </View>
-        )}
-
-        <ScrollView ref={scroller} style={{ flex: 1 }} contentContainerStyle={{ padding: 14, paddingBottom: 6 }}
-          scrollEventThrottle={64}
-          onScroll={(e) => { const n = e.nativeEvent; stick.current = n.contentSize.height - n.layoutMeasurement.height - n.contentOffset.y < 80; }}
-          onContentSizeChange={() => { if (stick.current) scroller.current?.scrollToEnd({ animated: false }); }}>
-          {c.loading && <ActivityIndicator color={t.red} style={{ margin: 20 }} />}
-          {c.hasMore && (
-            <Pressable onPress={() => { stick.current = false; act(c.loadOlder); }} style={{ alignItems: 'center', padding: 10 }}>
-              <Body style={{ color: t.red, fontFamily: FONT.bodyBold }}>Load earlier messages</Body>
-            </Pressable>
-          )}
-          {!c.loading && c.messages.length === 0 && <Body style={{ color: t.dim, textAlign: 'center', padding: 30 }}>No messages yet. Say something!</Body>}
-          {c.messages.map((m) => {
-            const tm = c.teams.get(m.teamId);
-            const isMine = m.teamId === mine;
-            return (
-              <View key={m.id} style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
-                {avatar(m.teamId)}
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-                    <Body style={{ fontFamily: FONT.bodyBold, fontSize: 13, color: isMine ? t.text : tm?.color ?? t.text }} numberOfLines={1}>{tm?.name ?? m.teamId}</Body>
-                    <Body style={{ color: t.dim2, fontSize: 11 }}>{clock(m.createdAt)}</Body>
-                    {m.pinned && <Body style={{ fontSize: 11 }}>📌</Body>}
-                  </View>
-                  <Body style={{ fontSize: 15, lineHeight: 21 }}>{m.body}</Body>
-                  <Reactions m={m} />
-                  {menuFor === m.id && (
-                    <View style={{ marginTop: 8, padding: 8, borderRadius: t.radius.card, backgroundColor: t.card, borderColor: t.line, borderWidth: 1, gap: 8 }}>
-                      <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-                        {c.emoji.map((e) => (
-                          <Pressable key={e} onPress={() => { setMenuFor(null); act(() => c.react(m.id, e)); }} style={{ padding: 6 }}><Body style={{ fontSize: 22 }}>{e}</Body></Pressable>
-                        ))}
-                      </View>
-                      <View style={{ flexDirection: 'row', gap: 16 }}>
-                        {commissioner && (
-                          <Pressable onPress={() => { setMenuFor(null); act(() => c.pin(m.id, !m.pinned)); }}>
-                            <Body style={{ color: t.gold, fontFamily: FONT.bodyBold, fontSize: 13 }}>{m.pinned ? 'Unpin' : '📌 Pin as announcement'}</Body>
-                          </Pressable>
-                        )}
-                        {(isMine || commissioner) && (
-                          <Pressable onPress={() => { setMenuFor(null); act(() => c.remove(m.id)); }}>
-                            <Body style={{ color: t.loss, fontFamily: FONT.bodyBold, fontSize: 13 }}>Delete</Body>
-                          </Pressable>
-                        )}
-                      </View>
-                    </View>
-                  )}
-                </View>
-              </View>
-            );
-          })}
-        </ScrollView>
-
-        {!!err && <Body style={{ color: t.loss, fontSize: 12, paddingHorizontal: 16, paddingBottom: 4 }}>{err}</Body>}
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 10, paddingBottom: Math.max(insets.bottom, 10), backgroundColor: t.panel, borderTopColor: t.line, borderTopWidth: 1 }}>
-          <TextInput value={text} onChangeText={(v) => { setText(v); if (err) setErr(''); }} placeholder="Message the league" placeholderTextColor={t.dim2}
-            multiline maxLength={MAX} onSubmitEditing={submit} blurOnSubmit={false}
-            onKeyPress={(e) => { const k = e.nativeEvent as unknown as { key?: string; shiftKey?: boolean }; if (Platform.OS === 'web' && k.key === 'Enter' && !k.shiftKey) { (e as unknown as { preventDefault?: () => void }).preventDefault?.(); submit(); } }}
-            style={{ flex: 1, maxHeight: 110, color: t.text, backgroundColor: t.card, borderColor: t.line, borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9, fontFamily: FONT.body, fontSize: 15 }} />
-          <Pressable onPress={submit} disabled={busy || !text.trim()} style={{ backgroundColor: t.red, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 10, opacity: busy || !text.trim() ? 0.5 : 1 }}>
-            <Display style={{ color: '#fff', fontSize: 14 }}>SEND</Display>
-          </Pressable>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
 }

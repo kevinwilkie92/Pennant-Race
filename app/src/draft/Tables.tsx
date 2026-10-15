@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { BUDGET, ROSTER_LABELS, ROSTER_SIZE } from '@pennant/domain';
 import type { DraftManager, DraftPlayer, DraftSale, Team } from '../api';
+import { TeamAvatar } from '../TeamAvatar';
 import { FONT } from '../theme';
 import { D } from './tokens';
 import { GROUPS, groupOf } from './useDraft';
@@ -19,7 +20,10 @@ export function Rosters({ teams, managers, roster, highlight }: {
         return (
           <View key={t.id} style={{ width: '15.9%', minWidth: 300, backgroundColor: D.panel, borderWidth: 1, borderColor: t.id === highlight ? D.gold : D.line }}>
             <View style={{ padding: 10, backgroundColor: t.color + '55' }}>
-              <Text numberOfLines={1} style={{ color: D.text, fontFamily: FONT.display, fontSize: 17 }}>{t.name}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <TeamAvatar id={t.id} color={t.color} logoKey={t.logoKey} size={26} />
+                <Text numberOfLines={1} style={{ flex: 1, color: D.text, fontFamily: FONT.display, fontSize: 17 }}>{t.name}</Text>
+              </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
                 <Text style={{ color: D.green, fontFamily: FONT.bodyBold, fontSize: 11 }}>Max ${m?.maxBid ?? 0}</Text>
                 <Text style={{ color: D.dim, fontFamily: FONT.bodyBold, fontSize: 11 }}>${m?.remaining ?? BUDGET} left</Text>
@@ -85,7 +89,10 @@ export function Log({ sales, teams }: { sales: DraftSale[]; teams: Team[] }) {
           <Text style={{ width: 40, color: D.dim2, fontFamily: FONT.num }}>#{s.seq}</Text>
           <Text style={{ flex: 1, color: D.text, fontFamily: FONT.display, fontSize: 20 }}>{s.name}</Text>
           {s.isKeeper ? <Text style={{ color: D.gold, fontFamily: FONT.bodyBold, fontSize: 11 }}>KEEPER</Text> : null}
-          <Text style={{ width: 220, color: byId.get(s.teamId)?.color ?? D.dim, fontFamily: FONT.bodyBold }} numberOfLines={1}>{byId.get(s.teamId)?.name ?? s.teamId}</Text>
+          <View style={{ width: 240, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TeamAvatar id={s.teamId} color={byId.get(s.teamId)?.color ?? D.dim2} logoKey={byId.get(s.teamId)?.logoKey} size={24} />
+            <Text style={{ flex: 1, color: byId.get(s.teamId)?.color ?? D.dim, fontFamily: FONT.bodyBold }} numberOfLines={1}>{byId.get(s.teamId)?.name ?? s.teamId}</Text>
+          </View>
           <Text style={{ width: 60, textAlign: 'right', color: D.green, fontFamily: FONT.num, fontSize: 18 }}>${s.price}</Text>
         </View>
       ))}

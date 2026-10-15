@@ -284,8 +284,12 @@ app.get('/draft/state', requireAuth, async (c) => c.json(await draftState(c.env,
 app.get('/draft/ws', async (c) => {
   // Browsers can't set headers on WebSockets, so the token rides in the query string.
   const token = c.req.query('token');
-  if (!token || !(await userForToken(c.env.DB, token))) return c.text('Unauthorized', 401);
-  return room(c.env).fetch(new Request('https://room/ws', c.req.raw));
+  const user = token ? await userForToken(c.env.DB, token) : null;
+  if (!user) return c.text('Unauthorized', 401);
+  // The team id is attached here, after the token check, so a client can't claim to be someone else.
+  const headers = new Headers(c.req.raw.headers);
+  headers.set('x-team-id', user.teamId ?? '');
+  return room(c.env).fetch(new Request('https://room/ws', { headers }));
 });
 
 app.post('/draft/hat', requireAuth, requireCommissioner, async (c) => {

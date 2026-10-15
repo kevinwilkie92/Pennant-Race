@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { api, type DraftManager, type KeeperCandidate, type KeeperRow, type KeeperView, type Team } from '../api';
+import { TeamAvatar } from '../TeamAvatar';
 import { FONT } from '../theme';
 import { D } from './tokens';
 import { GROUPS, groupOf } from './useDraft';
@@ -45,6 +46,7 @@ export function Keepers({ season, teams, managers, version, commissioner, myTeam
           return (
             <Pressable key={t.id} onPress={() => setTeamId(t.id)}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: on ? D.panel : D.row, borderWidth: 1, borderColor: on ? D.gold : D.line, borderLeftWidth: 4, borderLeftColor: t.color }}>
+              <TeamAvatar id={t.id} color={t.color} logoKey={t.logoKey} size={22} />
               <Text style={{ color: D.text, fontFamily: FONT.bodyBold, fontSize: 13 }}>{t.name}</Text>
               <Text style={{ color: n ? D.green : D.dim2, fontFamily: FONT.num, fontSize: 13 }}>{n}/{view.max}</Text>
             </Pressable>

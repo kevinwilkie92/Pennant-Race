@@ -112,7 +112,7 @@ To preview a finished season in the app, build with `EXPO_PUBLIC_AS_OF=2027-10-0
 - Under the hood: `lineup_history` (one row per slot change with its effective date) lets the feed credit each day's points
   to the slot the player held that day. Not built: "Optimize" (needs projections), lineup views for other teams.
 
-Run `npm run test:e2e` to run every end-to-end suite (keepers, league, lineup, waivers, trades, extras, chat, logos) against a fresh local database; no network needed.
+Run `npm run test:e2e` to run every end-to-end suite (keepers, league, lineup, waivers, trades, extras, chat, logos, dm) against a fresh local database; no network needed.
 
 ## Players, waivers and FAAB
 
@@ -168,21 +168,32 @@ need the stats feed**, so the card says so instead of showing numbers.
 
 Not built yet: stats-based views (Trending, Leaders, game log, career), injury notes and 15/60-day IL types, a commissioner screen for league settings beyond the waiver period.
 
-## League chat
+## League chat and direct messages
 
-Tap 💬 in the header. Messages arrive live over the same WebSocket room the draft uses; the icon shows an unread badge for messages from other teams.
-- **Messages:** up to 500 characters, shown with your team's colour and name; 5 messages per 10 seconds per team; "Load earlier messages" pages back.
-- **Reactions:** tap a chip to add or remove your team's reaction (👍 🔥 😂 😮 ❤️ 👀), or **＋ ⋯** to pick one. Counts update live; your own are outlined.
-- **Pinned announcement:** the commissioner can pin any message (**＋ ⋯ → Pin as announcement**); it shows at the top for everyone. Only one at a time.
-- **Moderation:** you can delete your own messages; the commissioner can delete anyone's (deleting the pinned message clears the announcement).
+Tap 💬 in the header. Everything arrives live over the same WebSocket room the draft uses. The badge counts unread league messages and
+direct messages, and turns gold with an **@** when someone mentioned your team.
 
-Not built: direct messages, replies/threads, @mentions, images, typing indicators, push notifications (the badge only updates while the app is open), edit-after-send.
+- **League tab:** up to 500 characters per message, shown with the team's logo/colour and *current* name; 5 messages per 10 seconds per team; "Load earlier messages" pages back.
+- **Direct tab:** a conversation list with unread counts, and *New message* to start one with any team. **Only the two teams can see a DM** — it is delivered only to their connections,
+  and reading, reacting, editing or deleting it is refused for anyone else (the commissioner included; they can't moderate DMs).
+- **Replies:** ＋ ⋯ → ↩ Reply. The reply quotes the original (or says it was deleted); a reply must stay in the same conversation.
+- **@mentions:** type `@` and pick a team (or type `@RC`). Mentions show as the team's current name in gold; mentioned teams get the gold badge. Not used in DMs.
+- **Images:** 📎 picks a photo, shrinks it (longest side 1280px), uploads it, and sends it with or without text. PNG/JPEG/WebP, 2 MB, 10 uploads a minute per team.
+  The server checks the real bytes; SVG and GIF are refused. Image links are public but unguessable and only ever sent to people in the conversation.
+  Deleting a message deletes its image. (An image that was uploaded but never sent stays in storage — a periodic cleanup is not built.)
+- **Edit after send:** ＋ ⋯ → ✎ Edit on your own message (no time limit); it shows "(edited)", mentions are re-read, and everyone sees the change live.
+- **Typing indicators:** "Team is typing…" in the league room, or only to the other person in a DM; expires after 4 seconds; rate-limited on the server.
+- **Reactions, pinned announcement, moderation:** as before — the commissioner can pin/delete league-room messages; authors delete their own.
+
+Not built: threads beyond a single quoted reply, group DMs, push notifications (the badge only updates while the app is open), read receipts, search.
 
 ## Team settings: logo and name
 
 Tap the logo (⚙) on your My Team card → **Team settings**.
-- **Logo:** *Upload logo* picks a photo, centre-crops it to a square, shrinks it to 256px and uploads it (PNG, JPEG or WebP). *Remove* goes back to your team colour.
-  It shows on your team card, the standings, matchups, chat and the phone draft view, and updates live for everyone.
+- **Logo:** *Upload logo* picks a photo and opens a **crop screen** — drag to position, zoom with − / + or the slider, and a circle shows what will be used. It is then shrunk to 256px and uploaded
+  (PNG, JPEG or WebP). *Remove* goes back to your team colour. It shows on your team card, the standings, matchups, chat, the phone draft view and the **TV draft board**
+  (Money rail, sold rows, rosters, keepers, draft log).
+- **Live updates:** a rename or new logo reaches everyone's open screens at once (the team list is a shared live source).
 - **Name:** 2–40 characters; another team's name (any capitalisation) is refused. The commissioner can edit any team.
 - **How it's stored:** in the R2 bucket from the deploy steps (`pennant-race-logos`). Files get random names (so the URL changes with every upload and can be cached for a year);
   the old file is deleted on replace/remove. The server checks the file's real bytes — not its label — and rejects anything over 2 MB, SVG (can carry scripts), GIF and non-images.
@@ -208,7 +219,7 @@ The feed also needs to fill `mlb_game` (first-pitch times, for the lineup lock) 
 Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code, roster / draft-state /
 commissioner sale + undo endpoints with server-side bid validation, live draft broadcast (Durable Object WebSocket),
 the TV draft board, the phone draft companion, the keepers picker + season push, the schedule / standings / matchup /
-bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat, team logos and names, and the app's login, My Team, League, and theme switcher
+bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
 Next, roughly in order: connect the stats feed (above), editing archived draft results, Google/Apple sign-in, and a

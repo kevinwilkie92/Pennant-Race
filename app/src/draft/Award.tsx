@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { validateBid } from '@pennant/domain';
 import { api, type DraftManager, type DraftPlayer, type Team } from '../api';
+import { TeamAvatar } from '../TeamAvatar';
 import { FONT } from '../theme';
 import { D } from './tokens';
 
@@ -40,8 +41,13 @@ export function Award({ player, managers, teams, onClose, onDone }: {
               return (
                 <Pressable key={m.teamId} onPress={() => setTeamId(m.teamId)}
                   style={{ width: 190, padding: 10, borderLeftWidth: 4, borderLeftColor: t?.color ?? D.dim2, backgroundColor: on ? 'rgba(226,38,52,0.18)' : D.row, borderWidth: 1, borderColor: on ? D.red : 'transparent' }}>
-                  <Text numberOfLines={1} style={{ color: D.text, fontFamily: FONT.bodyBold, fontSize: 13 }}>{t?.name ?? m.teamId}</Text>
-                  <Text style={{ color: D.gold, fontFamily: FONT.num, fontSize: 13 }}>max ${m.maxBid}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <TeamAvatar id={m.teamId} color={t?.color ?? D.dim2} logoKey={t?.logoKey} size={26} />
+                    <View style={{ flex: 1 }}>
+                      <Text numberOfLines={1} style={{ color: D.text, fontFamily: FONT.bodyBold, fontSize: 13 }}>{t?.name ?? m.teamId}</Text>
+                      <Text style={{ color: D.gold, fontFamily: FONT.num, fontSize: 13 }}>max ${m.maxBid}</Text>
+                    </View>
+                  </View>
                 </Pressable>
               );
             })}

@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { BUDGET } from '@pennant/domain';
 import type { DraftManager, Team } from '../api';
+import { TeamAvatar } from '../TeamAvatar';
 import { FONT } from '../theme';
 import { D } from './tokens';
 
@@ -18,7 +19,8 @@ export function Money({ managers, teams, onPick }: { managers: DraftManager[]; t
           const t = byId.get(m.teamId);
           return (
             <Pressable key={m.teamId} onPress={() => onPick(m.teamId)} style={{ flexDirection: 'row', marginBottom: 12 }}>
-              <View style={{ width: 3, backgroundColor: t?.color ?? D.dim2, marginRight: 10 }} />
+              <View style={{ width: 3, backgroundColor: t?.color ?? D.dim2, marginRight: 8 }} />
+              <View style={{ marginRight: 8, justifyContent: 'center' }}><TeamAvatar id={m.teamId} color={t?.color ?? D.dim2} logoKey={t?.logoKey} size={26} /></View>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <Text numberOfLines={1} style={{ flex: 1, color: D.text, fontFamily: FONT.bodyBold, fontSize: 13 }}>{t?.name ?? m.teamId}</Text>

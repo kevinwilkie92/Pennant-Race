@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { api } from '../src/api';
+import { CropModal } from '../src/CropModal';
+import { cropToSquare, pickImage, type Picked } from '../src/images';
 import { useAuth } from '../src/auth';
 import { RequireAuth } from '../src/RequireAuth';
 import { TeamAvatar } from '../src/TeamAvatar';
@@ -22,6 +22,7 @@ function Settings() {
   const [name, setName] = useState(team?.name ?? '');
   const [busy, setBusy] = useState<'logo' | 'name' | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [cropping, setCropping] = useState<Picked | null>(null);
   if (!team) return <Body style={{ padding: 20, color: t.dim }}>Your account isn't linked to a team yet.</Body>;
 
   const run = async (kind: 'logo' | 'name', okText: string, fn: () => Promise<unknown>) => {
@@ -31,19 +32,17 @@ function Settings() {
     finally { setBusy(null); }
   };
 
-  const chooseLogo = () => run('logo', 'Logo updated.', async () => {
-    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 1 });
-    if (picked.canceled) throw new Error('No image chosen');
-    const a = picked.assets[0];
-    // Centre-crop to a square and shrink, so uploads are small whatever the photo. PNG keeps transparency.
-    const side = Math.min(a.width, a.height);
-    const ctx = ImageManipulator.manipulate(a.uri)
-      .crop({ originX: Math.floor((a.width - side) / 2), originY: Math.floor((a.height - side) / 2), width: side, height: side })
-      .resize({ width: LOGO_PX, height: LOGO_PX });
-    const out = await (await ctx.renderAsync()).saveAsync({ format: SaveFormat.PNG });
-    const blob = await (await fetch(out.uri)).blob();
-    await api.uploadLogo(team.id, blob);
-  });
+  // 1) pick a photo, 2) position it in the crop window, 3) shrink and upload
+  const choose = async () => {
+    setMsg(null);
+    try { const img = await pickImage(); if (img) setCropping(img); }
+    catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : 'Could not open your photos' }); }
+  };
+  const finishCrop = (rect: { originX: number; originY: number; size: number }) => {
+    const img = cropping!;
+    setCropping(null);
+    run('logo', 'Logo updated.', async () => api.uploadLogo(team.id, await cropToSquare(img, rect, LOGO_PX)));
+  };
 
   const dirty = name.trim() !== team.name;
   return (
@@ -54,7 +53,7 @@ function Settings() {
       <Card style={{ padding: 16, marginBottom: 14, alignItems: 'center', gap: 12 }}>
         <TeamAvatar id={team.id} color={team.color} logoKey={team.logo_key} size={104} />
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          <Pressable onPress={chooseLogo} disabled={busy !== null} style={{ backgroundColor: t.red, borderRadius: t.radius.button, paddingHorizontal: 18, paddingVertical: 11, opacity: busy ? 0.6 : 1 }}>
+          <Pressable onPress={choose} disabled={busy !== null} style={{ backgroundColor: t.red, borderRadius: t.radius.button, paddingHorizontal: 18, paddingVertical: 11, opacity: busy ? 0.6 : 1 }}>
             <Display style={{ color: '#fff', fontSize: 15 }}>{busy === 'logo' ? 'UPLOADING…' : team.logo_key ? 'CHANGE LOGO' : 'UPLOAD LOGO'}</Display>
           </Pressable>
           {team.logo_key && (
@@ -63,7 +62,7 @@ function Settings() {
             </Pressable>
           )}
         </View>
-        <Body style={{ color: t.dim2, fontSize: 11, textAlign: 'center' }}>PNG, JPEG or WebP. It's cropped to a square and shrunk to {LOGO_PX}px.</Body>
+        <Body style={{ color: t.dim2, fontSize: 11, textAlign: 'center' }}>PNG, JPEG or WebP. You choose the square; it's shrunk to {LOGO_PX}px.</Body>
       </Card>
 
       <Card style={{ padding: 16, marginBottom: 14 }}>
@@ -76,6 +75,7 @@ function Settings() {
         </Pressable>
       </Card>
 
+      <CropModal image={cropping} onCancel={() => setCropping(null)} onDone={finishCrop} />
       {busy && <ActivityIndicator color={t.red} />}
       {msg && <Body style={{ color: msg.ok ? t.green : t.loss, fontFamily: FONT.bodyMedium }}>{msg.text}</Body>}
     </ScrollView>

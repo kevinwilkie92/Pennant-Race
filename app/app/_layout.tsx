@@ -6,6 +6,9 @@ import { Barlow_400Regular, Barlow_500Medium, Barlow_600SemiBold, Barlow_700Bold
 import { BarlowSemiCondensed_700Bold } from '@expo-google-fonts/barlow-semi-condensed';
 import { View } from 'react-native';
 import { AuthProvider } from '../src/auth';
+import { ChatProvider } from '../src/chat';
+import { RealtimeProvider } from '../src/realtime';
+import { TeamsProvider } from '../src/teams';
 import { ThemeProvider, useTheme } from '../src/theme';
 
 function Shell() {
@@ -28,7 +31,13 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <Shell />
+        <RealtimeProvider>
+          <TeamsProvider>
+            <ChatProvider>
+              <Shell />
+            </ChatProvider>
+          </TeamsProvider>
+        </RealtimeProvider>
       </AuthProvider>
     </ThemeProvider>
   );

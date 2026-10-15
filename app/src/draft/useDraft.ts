@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { assignSlots } from '@pennant/domain';
-import {
-  API_URL, api, getToken,
-  type DraftPlayer, type DraftSale, type DraftState, type MlbTeam, type SeasonRow, type Team,
-} from '../api';
+import { api, type DraftPlayer, type DraftSale, type DraftState, type MlbTeam, type SeasonRow } from '../api';
+import { useRealtime } from '../realtime';
+import { useTeams } from '../teams';
 
 export type Group = 'CIF' | 'OF' | 'SP' | 'RP';
 export const GROUPS: { key: Group; label: string; color: string }[] = [
@@ -26,18 +25,18 @@ export function useDraft() {
   const [season, setSeason] = useState<number | null>(null);
   const [players, setPlayers] = useState<DraftPlayer[]>([]);
   const [mlb, setMlb] = useState<MlbTeam[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
+  const { teams } = useTeams();
+  const { subscribe, connected: live } = useRealtime();
   const [state, setState] = useState<DraftState | null>(null);
   const [error, setError] = useState('');
-  const [live, setLive] = useState(false);
   const seasonRef = useRef<number | null>(null);
   seasonRef.current = season;
 
   // Static data + season list, once.
   useEffect(() => {
-    Promise.all([api.seasons(), api.mlbTeams(), api.teams()])
-      .then(([s, m, t]) => {
-        setSeasons(s); setMlb(m); setTeams(t);
+    Promise.all([api.seasons(), api.mlbTeams()])
+      .then(([s, m]) => {
+        setSeasons(s); setMlb(m);
         setSeason((s.find((x) => x.status === 'live') ?? s[0])?.year ?? null);
       })
       .catch((e) => setError(e.message));
@@ -61,27 +60,10 @@ export function useDraft() {
   useEffect(() => { setState(null); refresh(); }, [season, refresh]);
 
   // Realtime: every client (TV, commissioner, phones) refetches on any draft event.
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    let retry: ReturnType<typeof setTimeout>;
-    let closed = false;
-    const connect = () => {
-      const token = getToken();
-      if (!token) return;
-      ws = new WebSocket(`${API_URL.replace(/^http/, 'ws')}/draft/ws?token=${encodeURIComponent(token)}`);
-      ws.onopen = () => setLive(true);
-      ws.onmessage = (m) => {
-        try {
-          const ev = JSON.parse(String(m.data));
-          if (ev.type === 'hat') setState((s) => (s ? { ...s, hat: ev.mlbTeam } : s));
-          else if (ev.type === 'sale' || ev.type === 'undo' || ev.type === 'keepers') { if (ev.season === seasonRef.current) refresh(); }
-        } catch { /* ignore malformed */ }
-      };
-      ws.onclose = () => { setLive(false); if (!closed) retry = setTimeout(connect, 2000); };
-    };
-    connect();
-    return () => { closed = true; clearTimeout(retry); ws?.close(); };
-  }, [refresh]);
+  useEffect(() => subscribe((ev) => {
+    if (ev.type === 'hat') setState((st) => (st ? { ...st, hat: ev.mlbTeam as string | null } : st));
+    else if (ev.type === 'sale' || ev.type === 'undo' || ev.type === 'keepers') { if (ev.season === seasonRef.current) refresh(); }
+  }), [subscribe, refresh]);
 
   const status = seasons.find((s) => s.year === season)?.status ?? 'archived';
 

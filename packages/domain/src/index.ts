@@ -193,6 +193,7 @@ export function assignSlots(players: SlotInput[]): Map<number, string> {
 
 export * from './season';
 export * from './waivers';
+export * from './chat';
 
 // ------------------------------------------------------------ placing one more player
 

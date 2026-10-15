@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, Text, TextInput, View, type ViewStyle } from 'react-native';
 import type { DraftPlayer, DraftSale, MlbTeam, Team } from '../api';
+import { TeamAvatar } from '../TeamAvatar';
 import { FONT } from '../theme';
 import { GROUPS, groupOf, type Group } from './useDraft';
 import { D, abbr } from './tokens';
@@ -154,9 +155,12 @@ function Row({ p, color, s, teamById, canDraft, onDraft }: {
         </Text>
       </View>
       {s ? (
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ fontFamily: FONT.num, fontSize: 17, color: D.green }}>${s.price}</Text>
-          <Text style={{ fontFamily: FONT.bodyBold, fontSize: 10, color: w?.color ?? D.dim }}>{abbr(s.teamId)}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ fontFamily: FONT.num, fontSize: 17, color: D.green }}>${s.price}</Text>
+            <Text style={{ fontFamily: FONT.bodyBold, fontSize: 10, color: w?.color ?? D.dim }}>{abbr(s.teamId)}</Text>
+          </View>
+          <TeamAvatar id={s.teamId} color={w?.color ?? D.dim2} logoKey={w?.logoKey} size={30} />
         </View>
       ) : canDraft ? (
         <Pressable onPress={() => onDraft(p)} style={{ backgroundColor: D.red, paddingHorizontal: 16, paddingVertical: 9 }}>

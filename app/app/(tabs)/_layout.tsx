@@ -3,8 +3,7 @@ import { Image, Modal, Pressable, Text, View } from 'react-native';
 import { Redirect, Tabs, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../src/auth';
-import { ChatProvider, useChat } from '../../src/chat';
-import { RealtimeProvider } from '../../src/realtime';
+import { useChat } from '../../src/chat';
 import { FONT, THEMES, useTheme, type ThemeName } from '../../src/theme';
 
 // Nav bar and its icons/labels stay dark/white in every theme; only the active tab turns red.
@@ -27,11 +26,11 @@ function Header() {
     <View style={{ paddingTop: insets.top + 6, paddingBottom: 8, paddingHorizontal: 16, backgroundColor: t.panel, borderBottomColor: t.line, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
       <Pressable onPress={() => setOpen(true)} hitSlop={12}><Text style={{ color: t.text, fontSize: 24 }}>☰</Text></Pressable>
       <Image source={require('../../assets/logo.png')} style={{ width: 38, height: 38, resizeMode: 'contain' }} />
-      <Pressable onPress={() => chat.setOpen(true)} hitSlop={12}>
+      <Pressable onPress={() => { chat.setView(chat.unread.league === 0 && chat.unread.dm > 0 ? { kind: 'dms' } : { kind: 'league' }); chat.setOpen(true); }} hitSlop={12}>
         <Text style={{ color: t.text, fontSize: 24 }}>💬</Text>
-        {chat.unread > 0 && (
-          <View style={{ position: 'absolute', top: -6, right: -10, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: t.red, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
-            <Text style={{ color: '#fff', fontSize: 11, fontFamily: FONT.bodyBold }}>{chat.unread > 99 ? '99+' : chat.unread}</Text>
+        {chat.unread.total > 0 && (
+          <View style={{ position: 'absolute', top: -6, right: -10, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: chat.unread.mentions > 0 ? t.gold : t.red, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
+            <Text style={{ color: '#fff', fontSize: 11, fontFamily: FONT.bodyBold }}>{chat.unread.mentions > 0 ? '@' : ''}{chat.unread.total > 99 ? '99+' : chat.unread.total}</Text>
           </View>
         )}
       </Pressable>
@@ -78,8 +77,6 @@ export default function TabsLayout() {
   });
 
   return (
-    <RealtimeProvider>
-    <ChatProvider>
     <Tabs
       screenOptions={{
         header: () => <Header />,
@@ -95,7 +92,5 @@ export default function TabsLayout() {
       <Tabs.Screen name="players" options={tab('Players', 'players')} />
       <Tabs.Screen name="league" options={tab('League', 'league')} />
     </Tabs>
-    </ChatProvider>
-    </RealtimeProvider>
   );
 }
