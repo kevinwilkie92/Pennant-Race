@@ -52,6 +52,7 @@ export function AddSheet({ player, teamId, onClose, onDone }: {
               <Body style={{ color: t.dim, fontSize: 12 }}>{faab == null ? '' : `of $${faab} left`}</Body>
             </View>
             <Body style={{ color: t.dim2, fontSize: 11, marginBottom: 10 }}>Highest bid wins. Ties go to the team first in the waiver order. $0 is allowed.</Body>
+            {player.waiversUntil && <Body style={{ color: t.gold, fontSize: 12, marginBottom: 10 }}>He was just dropped and is on waivers until {player.waiversUntil}. Your claim waits and is processed on or after that date.</Body>}
 
             <Body style={{ color: t.dim, fontFamily: FONT.bodyBold, fontSize: 11, letterSpacing: 1, marginTop: 4 }}>
               {full ? 'DROP (REQUIRED — ROSTER FULL)' : 'DROP (OPTIONAL)'}

@@ -1,5 +1,5 @@
 import type { Hono } from 'hono';
-import { ROSTER_LABELS, canFillSlot } from '@pennant/domain';
+import { ALL_LABELS, canFillSlot, canUseIL, isILSlot } from '@pennant/domain';
 import { requireAuth } from './auth';
 import { loadRoster, materializeStmts, playerEntries, type RosterEntry } from './roster';
 import { isoNow, leagueToday } from './time';
@@ -68,8 +68,8 @@ export function registerLineup(app: App) {
     const byPlayer = new Map(pts.map((p) => [p.playerId, p.points]));
     const slots = entries
       .map((e) => ({ ...e, locked: !!e.mlbTeam && locked.has(e.mlbTeam), points: byPlayer.get(e.playerId) ?? null }))
-      .sort((a, b) => ROSTER_LABELS.indexOf(a.slot as never) - ROSTER_LABELS.indexOf(b.slot as never));
-    const total = Math.round(slots.filter((e) => !e.slot.startsWith('B')).reduce((n, e) => n + (e.points ?? 0), 0) * 100) / 100;
+      .sort((a, b) => (ALL_LABELS as readonly string[]).indexOf(a.slot) - (ALL_LABELS as readonly string[]).indexOf(b.slot));
+    const total = Math.round(slots.filter((e) => !e.slot.startsWith('B') && !isILSlot(e.slot)).reduce((n, e) => n + (e.points ?? 0), 0) * 100) / 100;
     return c.json({
       season: s.year, date, today: leagueToday(), total, slots,
       editable: s.status === 'live' && date >= leagueToday() && (u.isCommissioner || u.teamId === teamId),
@@ -88,13 +88,20 @@ export function registerLineup(app: App) {
     const date = body.date ?? today;
     if (!isDate(date)) return c.json({ error: 'Bad date' }, 400);
     if (date < today) return c.json({ error: 'Past days can’t be edited' }, 400);
-    if (!(ROSTER_LABELS as readonly string[]).includes(body.toSlot)) return c.json({ error: 'Unknown slot' }, 400);
+    if (!(ALL_LABELS as readonly string[]).includes(body.toSlot)) return c.json({ error: 'Unknown slot' }, 400);
 
     const entries = await lineupAt(c.env, s.year, teamId, date);
     const p = entries.find((e) => e.playerId === body.playerId);
     if (!p) return c.json({ error: 'That player is not on this team' }, 404);
     if (p.slot === body.toSlot) return c.json({ ok: true });
     const q = entries.find((e) => e.slot === body.toSlot);
+
+    // Only injured (IL/OUT) players may sit in an IL slot — whoever ends up there.
+    for (const [who, dest] of [[p, body.toSlot], ...(q ? [[q, p.slot] as const] : [])] as const) {
+      if (isILSlot(dest) && !canUseIL(who.injury)) {
+        return c.json({ error: `${who.name} can only go on the injured list if he is ruled IL or OUT${who.injury ? ` (he is ${who.injury})` : ''}` }, 400);
+      }
+    }
 
     const locked = await lockedTeams(c.env, date);
     for (const x of [p, q]) {

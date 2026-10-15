@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   maxBid, validateBid, keeperCost, keeperTier, rolloverBucket, ROSTER_SIZE, ROSTER_LABELS,
-  scoreHitter, scorePitcher, assignSlots, placePlayer, hitterEligibility, pitcherEligibility, canFillSlot, playerSubline,
+  scoreHitter, scorePitcher, assignSlots, placePlayer, ALL_LABELS, canUseIL, countsAgainstRoster, slotLabelRank, hitterEligibility, pitcherEligibility, canFillSlot, playerSubline,
 } from '../src';
 
 describe('draft budget', () => {
@@ -111,6 +111,27 @@ describe('assignSlots', () => {
     const m = assignSlots(many);
     expect(m.size).toBe(12); // OF1-4, Util1-2, B1-6 (IF needs an infielder)
     expect(new Set(m.values()).size).toBe(m.size);
+  });
+});
+
+describe('injured list rules', () => {
+  it('IL slots follow the bench and sit outside the 26', () => {
+    expect(ROSTER_SIZE).toBe(26);
+    expect(ALL_LABELS.length).toBe(30);
+    expect(slotLabelRank('IL1')).toBeGreaterThan(slotLabelRank('B6'));
+    expect(canFillSlot('IL2', ['SP'])).toBe(true);
+  });
+  it('only IL or OUT players may use an IL slot', () => {
+    expect(canUseIL('IL')).toBe(true);
+    expect(canUseIL('OUT')).toBe(true);
+    expect(canUseIL('DTD')).toBe(false);
+    expect(canUseIL(null)).toBe(false);
+  });
+  it('an IL slot exempts a player from the roster limit only while he is injured', () => {
+    expect(countsAgainstRoster('IL1', 'IL')).toBe(false);
+    expect(countsAgainstRoster('IL1', null)).toBe(true);   // healed but still parked on IL: counts again
+    expect(countsAgainstRoster('B1', 'IL')).toBe(true);
+    expect(countsAgainstRoster('SP1', null)).toBe(true);
   });
 });
 

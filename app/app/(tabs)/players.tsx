@@ -3,6 +3,8 @@ import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react
 import { useRouter } from 'expo-router';
 import { api, type PoolPlayer } from '../../src/api';
 import { AddSheet } from '../../src/AddSheet';
+import { PlayerCard } from '../../src/PlayerCard';
+import { useLeague } from '../../src/useLeague';
 import { useAuth } from '../../src/auth';
 import { FONT, POS_COLOR, useTheme } from '../../src/theme';
 import { Body, Card, Display } from '../../src/ui';
@@ -27,6 +29,8 @@ export default function Players() {
   const [total, setTotal] = useState(0);
   const [adding, setAdding] = useState<PoolPlayer | null>(null);
   const [toast, setToast] = useState('');
+  const [cardId, setCardId] = useState<number | null>(null);
+  const lg = useLeague();
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const load = useCallback((offset = 0) => {
@@ -105,10 +109,14 @@ export default function Players() {
                       <Body style={{ fontSize: 20, color: p.watched ? t.gold : t.dim2 }}>{p.watched ? '★' : '☆'}</Body>
                     </Pressable>
                     <View style={{ width: 3, alignSelf: 'stretch', backgroundColor: colorFor(p.positions[0] ?? p.pos), borderRadius: 2 }} />
-                    <View style={{ flex: 1 }}>
-                      <Body numberOfLines={1} style={{ fontFamily: FONT.bodyBold, fontSize: 15 }}>{p.name}</Body>
+                    <Pressable style={{ flex: 1 }} onPress={() => setCardId(p.id)}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Body numberOfLines={1} style={{ fontFamily: FONT.bodyBold, fontSize: 15, flexShrink: 1 }}>{p.name}</Body>
+                        {p.injury && <Body style={{ backgroundColor: p.injury === 'DTD' ? '#d19a1f' : '#ec3b48', color: '#fff', fontFamily: FONT.bodyBold, fontSize: 10, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, overflow: 'hidden' }}>{p.injury}</Body>}
+                      </View>
                       <Body style={{ color: t.dim, fontSize: 12 }}>{p.mlbTeam ?? 'FA'} · {p.positions.join(',')}</Body>
-                    </View>
+                      {p.waiversUntil && <Body style={{ color: t.gold, fontSize: 11, fontFamily: FONT.bodySemi }}>On waivers until {p.waiversUntil}</Body>}
+                    </Pressable>
                     {p.ownerId ? (
                       p.ownerId === me?.user.teamId ? <Body style={{ color: t.dim, fontSize: 11, fontFamily: FONT.bodyBold }}>YOURS</Body> : (
                         <Pressable onPress={() => router.push({ pathname: '/trade', params: { team: p.ownerId!, player: String(p.id) } })}
@@ -139,6 +147,7 @@ export default function Players() {
           <Body style={{ color: t.text, fontSize: 13 }}>{toast}</Body>
         </Pressable>
       )}
+      <PlayerCard playerId={cardId} teamName={(id) => lg.byId.get(id)?.name ?? id} onClose={() => setCardId(null)} />
       <AddSheet player={adding} teamId={me?.user.teamId ?? null} onClose={() => setAdding(null)}
         onDone={(m) => { setAdding(null); setToast(m); setTimeout(() => setToast(''), 5000); }} />
     </View>

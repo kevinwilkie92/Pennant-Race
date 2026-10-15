@@ -24,10 +24,23 @@ export const ROSTER_LABELS = [
   'B1', 'B2', 'B3', 'B4', 'B5', 'B6',
 ] as const;
 
-/** Display order: hitters (INF after SS), pitchers (SP then RP), bench last. */
+/** Injured-list slots sit outside the 26-player roster: they hold injured players and don't count toward the limit. */
+export const MAX_IL = 4;
+export const IL_LABELS = ['IL1', 'IL2', 'IL3', 'IL4'] as const;
+export const ALL_LABELS = [...ROSTER_LABELS, ...IL_LABELS] as const;
+
+export type InjuryStatus = 'DTD' | 'IL' | 'OUT';
+export const INJURY_STATUSES: InjuryStatus[] = ['DTD', 'IL', 'OUT'];
+/** Only players ruled IL or OUT may sit in an IL slot (day-to-day players may not). */
+export const canUseIL = (status: string | null | undefined) => status === 'IL' || status === 'OUT';
+export const isILSlot = (slot: string) => slot.startsWith('IL');
+/** A player in an IL slot stops counting toward the roster limit only while he is actually injured. */
+export const countsAgainstRoster = (slot: string, status: string | null | undefined) => !(isILSlot(slot) && canUseIL(status));
+
+/** Display order: hitters (INF after SS), pitchers (SP then RP), bench, then the injured list. */
 export function slotLabelRank(label: string): number {
-  const i = (ROSTER_LABELS as readonly string[]).indexOf(label);
-  return i === -1 ? ROSTER_LABELS.length : i;
+  const i = (ALL_LABELS as readonly string[]).indexOf(label);
+  return i === -1 ? ALL_LABELS.length : i;
 }
 
 /** Max bid = remaining budget minus $1 held back for every other open spot. */
@@ -129,6 +142,7 @@ export function canFillSlot(slot: string, positions: string[]): boolean {
   const hitter = positions.some((p) => !['SP', 'RP', 'P'].includes(p));
   switch (s) {
     case 'BN': case 'B': return true;
+    case 'IL': return true; // whether he is injured enough is checked where the status is known
     case 'UTIL': return hitter;
     case 'IF': case 'INF': return positions.some((p) => ['1B', '2B', '3B', 'SS'].includes(p));
     case 'OF': return positions.includes('OF');

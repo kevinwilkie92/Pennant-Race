@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
-import { ROSTER_LABELS, canFillSlot } from '@pennant/domain';
+import { ALL_LABELS, canFillSlot, canUseIL, isILSlot } from '@pennant/domain';
+import { PlayerCard } from '../../src/PlayerCard';
 import { api, type LineupSlot } from '../../src/api';
 import { useAuth } from '../../src/auth';
 import { Lineup } from '../../src/Lineup';
@@ -23,6 +24,7 @@ export default function MyTeam() {
   const [err, setErr] = useState('');
   const [sel, setSel] = useState<LineupSlot | null>(null);
   const [sub, setSub] = useState<'lineup' | 'trade' | 'transactions'>('lineup');
+  const [cardId, setCardId] = useState<number | null>(null);
   const lg = useLeague();
 
   const load = useCallback(() => {
@@ -99,6 +101,7 @@ export default function MyTeam() {
         </>
       )}
 
+      <PlayerCard playerId={cardId} teamName={(id) => lg.byId.get(id)?.name ?? id} onClose={() => setCardId(null)} />
       <Modal transparent visible={!!sel} animationType="slide" onRequestClose={() => setSel(null)}>
         <Pressable onPress={() => setSel(null)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}>
           <Pressable onPress={() => {}} style={{ maxHeight: '75%', backgroundColor: t.panel, borderTopLeftRadius: 18, borderTopRightRadius: 18, borderColor: t.line, borderWidth: 1, paddingBottom: 24 }}>
@@ -108,6 +111,21 @@ export default function MyTeam() {
                   <Display style={{ fontSize: 22 }}>{sel.name}</Display>
                   <Body style={{ color: t.dim, fontSize: 12 }}>{sel.slot.replace(/^B\d$/, 'BN')} · {sel.positions.join(',')} — move to…</Body>
                 </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingBottom: 8, flexWrap: 'wrap' }}>
+                  <Pressable onPress={() => { const id = sel.playerId; setSel(null); setCardId(id); }} style={{ borderColor: t.line, borderWidth: 1, borderRadius: t.radius.chip, paddingHorizontal: 12, paddingVertical: 6 }}>
+                    <Display style={{ fontSize: 12, color: t.text }}>PLAYER CARD</Display>
+                  </Pressable>
+                  {me?.user.isCommissioner && (['—', 'DTD', 'IL', 'OUT'] as const).map((st) => {
+                    const cur = sel.injury ?? '—';
+                    return (
+                      <Pressable key={st} onPress={() => { const who = sel; api.setStatus(who.playerId, st === '—' ? null : st).then(() => { setSel({ ...who, injury: st === '—' ? null : st }); load(); }).catch((e) => say(e.message)); }}
+                        style={{ borderColor: cur === st ? t.red : t.line, backgroundColor: cur === st ? t.red : 'transparent', borderWidth: 1, borderRadius: t.radius.chip, paddingHorizontal: 10, paddingVertical: 6 }}>
+                        <Display style={{ fontSize: 12, color: cur === st ? '#fff' : t.dim }}>{st}</Display>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                {!canUseIL(sel.injury) && <Body style={{ color: t.dim2, fontSize: 11, paddingHorizontal: 16, paddingBottom: 6 }}>Only players ruled IL or OUT can go on the injured list.</Body>}
                 {data.editable && isToday && !sel.locked && (
                   <Pressable onPress={() => {
                     const who = sel; setSel(null);
@@ -122,9 +140,9 @@ export default function MyTeam() {
                   <Body style={{ padding: 16, color: t.loss }}>🔒 His game has started, so he's locked for today.</Body>
                 ) : (
                   <ScrollView>
-                    {ROSTER_LABELS.filter((l) => l !== sel.slot && canFillSlot(l, sel.positions)).map((label) => {
+                    {ALL_LABELS.filter((l) => l !== sel.slot && canFillSlot(l, sel.positions) && (!isILSlot(l) || canUseIL(sel.injury))).map((label) => {
                       const occ = data.slots.find((s) => s.slot === label);
-                      const blocked = !!occ?.locked || (!!occ && !canFillSlot(sel.slot, occ.positions));
+                      const blocked = !!occ?.locked || (!!occ && !canFillSlot(sel.slot, occ.positions)) || (!!occ && isILSlot(sel.slot) && !canUseIL(occ.injury));
                       return (
                         <Pressable key={label} disabled={blocked} onPress={() => move(label)}
                           style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: t.line, opacity: blocked ? 0.4 : 1 }}>

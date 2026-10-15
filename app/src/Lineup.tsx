@@ -1,5 +1,5 @@
 import { Pressable, View } from 'react-native';
-import { BENCH_SLOTS, HIT_SLOTS, PIT_SLOTS, ROSTER_LABELS, playerSubline } from '@pennant/domain';
+import { BENCH_SLOTS, HIT_SLOTS, IL_LABELS, PIT_SLOTS, ROSTER_LABELS, playerSubline } from '@pennant/domain';
 import type { LineupSlot, RosterSlot } from './api';
 import { fmtPts } from './useLeague';
 import { FONT, useTheme } from './theme';
@@ -10,6 +10,7 @@ const HIT = ROSTER_LABELS.slice(0, NH), PIT = ROSTER_LABELS.slice(NH, NH + NP), 
 void BENCH_SLOTS;
 
 type Row = RosterSlot & Partial<Pick<LineupSlot, 'locked' | 'points'>>;
+const BADGE: Record<string, string> = { DTD: '#d19a1f', IL: '#ec3b48', OUT: '#ec3b48' };
 
 function Section({ title, labels, by, showPoints, onPress, selected }: {
   title: string; labels: readonly string[]; by: Map<string, Row>; showPoints: boolean;
@@ -38,6 +39,11 @@ function Section({ title, labels, by, showPoints, onPress, selected }: {
                     </Body>
                     <Body style={{ color: t.dim, fontSize: 12 }}>{playerSubline(r.mlbTeam, r.positions)}</Body>
                   </View>
+                  {r.injury && (
+                    <View style={{ backgroundColor: BADGE[r.injury] ?? t.dim2, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 }}>
+                      <Body style={{ color: '#fff', fontFamily: FONT.bodyBold, fontSize: 10 }}>{r.injury}</Body>
+                    </View>
+                  )}
                   {showPoints && (
                     <Body style={{ fontFamily: FONT.num, fontSize: 16, color: r.points == null ? t.dim2 : r.points < 0 ? t.loss : t.text }}>{fmtPts(r.points)}</Body>
                   )}
@@ -62,6 +68,7 @@ export function Lineup<T extends Row>({ slots, showPoints = false, onPress, sele
       <Section title="HITTERS" labels={HIT} {...p} />
       <Section title="PITCHERS" labels={PIT} {...p} />
       <Section title="BENCH" labels={BEN} {...p} />
+      {(onPress || slots.some((s) => s.slot.startsWith('IL'))) && <Section title="INJURED LIST" labels={IL_LABELS} {...p} />}
     </>
   );
 }

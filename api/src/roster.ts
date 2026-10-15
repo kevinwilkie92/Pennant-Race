@@ -1,10 +1,13 @@
-import { assignSlots, slotLabelRank } from '@pennant/domain';
+import { assignSlots, countsAgainstRoster, slotLabelRank } from '@pennant/domain';
 import type { Env } from './types';
 
 export type RosterEntry = {
   slot: string; playerId: number; name: string; mlbTeam: string | null; pos: string; pos2: string | null;
-  positions: string[]; keeperYear: number | null; price: number | null;
+  positions: string[]; keeperYear: number | null; price: number | null; injury: string | null;
 };
+
+/** Players who count toward the 26-player limit (injured players parked in an IL slot don't). */
+export const activeCount = (entries: Pick<RosterEntry, 'slot' | 'injury'>[]) => entries.filter((e) => countsAgainstRoster(e.slot, e.injury)).length;
 
 type Row = Omit<RosterEntry, 'positions'> & { positions: string | null };
 
@@ -16,8 +19,9 @@ type Row = Omit<RosterEntry, 'positions'> & { positions: string | null };
 export async function loadRoster(env: Env, yr: number, teamId: string): Promise<RosterEntry[]> {
   const cols = `p.id AS playerId, p.name, p.mlb_team AS mlbTeam, p.pos, p.pos2,
        (SELECT group_concat(position) FROM player_position pp WHERE pp.player_id = p.id AND pp.season = ?1) AS positions,
-       k.year AS keeperYear, ds.price`;
+       k.year AS keeperYear, ds.price, ps.status AS injury`;
   const joins = `JOIN player p ON p.id = x.player_id
+       LEFT JOIN player_status ps ON ps.player_id = p.id
        LEFT JOIN keeper k ON k.season = ?1 AND k.player_id = p.id
        LEFT JOIN draft_sale ds ON ds.season = ?1 AND ds.player_id = p.id`;
 
@@ -46,8 +50,9 @@ export async function playerEntries(env: Env, yr: number, ids: number[]): Promis
   const { results } = await env.DB.prepare(
     `SELECT p.id AS playerId, p.name, p.mlb_team AS mlbTeam, p.pos, p.pos2,
             (SELECT group_concat(position) FROM player_position pp WHERE pp.player_id = p.id AND pp.season = ?1) AS positions,
-            k.year AS keeperYear, ds.price
+            k.year AS keeperYear, ds.price, ps.status AS injury
        FROM player p
+       LEFT JOIN player_status ps ON ps.player_id = p.id
        LEFT JOIN keeper k ON k.season = ?1 AND k.player_id = p.id
        LEFT JOIN draft_sale ds ON ds.season = ?1 AND ds.player_id = p.id
       WHERE p.id IN (${ph})`,

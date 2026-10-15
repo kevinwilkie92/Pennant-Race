@@ -1,8 +1,8 @@
 import type { Context, Hono } from 'hono';
-import { ROSTER_SIZE, canFillSlot, placePlayer } from '@pennant/domain';
+import { ROSTER_SIZE, canFillSlot, countsAgainstRoster, isILSlot, placePlayer } from '@pennant/domain';
 import { requireAuth } from './auth';
 import { dropStmts, historyStmts } from './players';
-import { loadRoster, materializeStmts, type RosterEntry } from './roster';
+import { activeCount, loadRoster, materializeStmts, type RosterEntry } from './roster';
 import { isoNow, leagueToday } from './time';
 import type { AppVars, Env } from './types';
 
@@ -40,8 +40,10 @@ async function checkTrade(env: Env, yr: number, from: string, to: string, give: 
   const mine = give.map((id) => a.find((e) => e.playerId === id)), theirs = get.map((id) => b.find((e) => e.playerId === id));
   if (mine.some((x) => !x)) return 'One of the players you’re offering is no longer on your roster';
   if (theirs.some((x) => !x)) return 'One of the players you’re asking for is no longer on their roster';
-  if (a.length - give.length + get.length > ROSTER_SIZE) return `That would put ${from} over the ${ROSTER_SIZE}-player roster limit`;
-  if (b.length - get.length + give.length > ROSTER_SIZE) return `That would put ${to} over the ${ROSTER_SIZE}-player roster limit`;
+  // Injured players parked in IL slots don't count toward the limit; incoming players are seated in active slots.
+  const activeOut = (xs: (RosterEntry | undefined)[]) => xs.filter((e) => e && countsAgainstRoster(e.slot, e.injury)).length;
+  if (activeCount(a) - activeOut(mine) + get.length > ROSTER_SIZE) return `That would put ${from} over the ${ROSTER_SIZE}-player roster limit`;
+  if (activeCount(b) - activeOut(theirs) + give.length > ROSTER_SIZE) return `That would put ${to} over the ${ROSTER_SIZE}-player roster limit`;
   const locked = await lockedNames(env, [...(mine as RosterEntry[]), ...(theirs as RosterEntry[])]);
   if (locked.length) return `${locked.join(', ')}: game has started, so he can’t be traded today`;
   return null;
@@ -54,7 +56,7 @@ function reseat(rest: RosterEntry[], vacated: string[], incoming: RosterEntry[])
   const free = [...vacated];
   const placed = new Map<number, string>();
   for (const inc of incoming) {
-    const i = free.findIndex((s) => canFillSlot(s, inc.positions) && !seated.some((p) => p.slot === s));
+    const i = free.findIndex((s) => !isILSlot(s) && canFillSlot(s, inc.positions) && !seated.some((p) => p.slot === s));
     if (i >= 0) { const slot = free.splice(i, 1)[0]; placed.set(inc.playerId, slot); seated.push({ playerId: inc.playerId, positions: inc.positions, slot }); continue; }
     const mv = placePlayer(seated, { playerId: inc.playerId, positions: inc.positions });
     if (!mv) return null;

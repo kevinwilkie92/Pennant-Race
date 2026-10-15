@@ -25,10 +25,12 @@ export function Transactions({ teamId, commissioner, teamName }: { teamId: strin
   const [log, setLog] = useState<Txn[]>([]);
   const [roster, setRoster] = useState<LineupSlot[]>([]);
   const [picking, setPicking] = useState<Claim | null>(null);
+  const [days, setDays] = useState<number | null>(null);
   const [trades, setTrades] = useState<Awaited<ReturnType<typeof api.trades>> | null>(null);
 
   const load = useCallback(() => {
     api.claims().then(setData).catch(() => {});
+    api.leagueSettings().then((x) => setDays(x.waiverDays)).catch(() => {});
     api.trades().then(setTrades).catch(() => {});
     api.transactions(teamId).then(setLog).catch(() => {});
     api.lineup(teamId).then((l) => setRoster(l.slots)).catch(() => {});
@@ -45,12 +47,24 @@ export function Transactions({ teamId, commissioner, teamName }: { teamId: strin
           <Display style={{ fontSize: 28, color: t.green }}>${data.faab}</Display>
         </View>
         {commissioner && (
-          <Pressable onPress={() => act(async () => { const r = await api.processWaivers(); say(`Waivers processed: ${r.won} won, ${r.failed} failed.`); })}
+          <Pressable onPress={() => act(async () => { const r = await api.processWaivers(); say(`Waivers processed: ${r.won} won, ${r.failed} failed${(r as { deferred?: number }).deferred ? `, ${(r as { deferred?: number }).deferred} waiting on a waiver period` : ''}.`); })}
             style={{ borderColor: t.red, borderWidth: 1, borderRadius: t.radius.chip, paddingHorizontal: 12, paddingVertical: 8 }}>
             <Display style={{ fontSize: 12.5, color: t.red }}>RUN WAIVERS NOW</Display>
           </Pressable>
         )}
       </Card>
+
+      {commissioner && days != null && (
+        <Card style={{ padding: 12, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Body style={{ fontFamily: FONT.bodySemi }}>Waiver period after a drop</Body>
+            <Body style={{ color: t.dim, fontSize: 11 }}>Commissioner setting. 0 = claimable at the next run.</Body>
+          </View>
+          <Pressable disabled={days <= 0} onPress={() => act(() => api.setWaiverDays(days - 1))} hitSlop={8}><Display style={{ fontSize: 24, color: days <= 0 ? t.dim2 : t.text }}>−</Display></Pressable>
+          <Display style={{ fontSize: 20, minWidth: 54, textAlign: 'center' }}>{days} day{days === 1 ? '' : 's'}</Display>
+          <Pressable disabled={days >= 14} onPress={() => act(() => api.setWaiverDays(days + 1))} hitSlop={8}><Display style={{ fontSize: 24, color: days >= 14 ? t.dim2 : t.text }}>+</Display></Pressable>
+        </Card>
+      )}
 
       {trades && (trades.received.length > 0 || trades.sent.length > 0) && (
         <>
@@ -75,6 +89,7 @@ export function Transactions({ teamId, commissioner, teamName }: { teamId: strin
             </View>
             <View style={{ flex: 1 }}>
               <Body style={{ fontFamily: FONT.bodyBold, fontSize: 15 }} numberOfLines={1}>+ {c.addName}</Body>
+              {c.waiversUntil && <Body style={{ color: t.gold, fontSize: 11, fontFamily: FONT.bodySemi }}>⏳ On waivers — can be won from {c.waiversUntil}</Body>}
               <Pressable onPress={() => setPicking(c)}>
                 <Body style={{ color: c.dropName ? t.loss : t.dim, fontSize: 13 }} numberOfLines={1}>{c.dropName ? `− ${c.dropName}` : '− no drop (tap to choose)'}  ✎</Body>
               </Pressable>

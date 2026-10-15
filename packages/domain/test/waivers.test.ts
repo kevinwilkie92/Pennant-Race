@@ -73,6 +73,19 @@ describe('resolveWaivers', () => {
     expect(o[1].won).toBe(true);
     expect(o[2]).toMatchObject({ won: false, reason: 'You can’t drop a player you just added' });
   });
+  it('injured-list players do not count toward the roster limit', () => {
+    const full = Array.from({ length: 26 }, (_, i) => 100 + i);
+    const t = (exempt: number[]) => ({ ...team(1, 100, [...full, 200]), exempt: new Set(exempt) }); // 27 players, one may be on IL
+    expect(list(resolveWaivers([claim(1, 'A', 10, 0)], { A: t([200]) }, new Set()))[0].won).toBe(false);   // 26 active: full
+    const lighter = { ...team(1, 100, [...full.slice(0, 25), 200]), exempt: new Set([200]) };             // 25 active + 1 on IL
+    expect(list(resolveWaivers([claim(1, 'A', 10, 0)], { A: lighter }, new Set()))[0].won).toBe(true);
+  });
+  it('dropping an injured player does not free an active spot', () => {
+    const full = Array.from({ length: 26 }, (_, i) => 100 + i);
+    const t = { ...team(1, 100, [...full, 200]), exempt: new Set([200]) };
+    expect(list(resolveWaivers([claim(1, 'A', 10, 0, 1, 200)], { A: t }, new Set()))[0].won).toBe(false);
+    expect(list(resolveWaivers([claim(1, 'A', 10, 0, 1, 100)], { A: t }, new Set()))[0].won).toBe(true);
+  });
   it('returns the new rolling order', () => {
     const r = resolveWaivers([claim(1, 'B', 10, 5)], { A: team(1), B: team(2), C: team(3) }, new Set());
     expect(r.waiverPos).toEqual({ A: 1, B: 3, C: 2 });

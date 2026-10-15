@@ -29,7 +29,7 @@ export function MatchupView({ week, weeks, onWeek, home, away, homeScore, awaySc
 
   const idx = weeks.findIndex((w) => w.week === week);
   const dayTotal = (slots: WeekSlot[] | undefined) =>
-    (slots ?? []).filter((s) => !(s.slot.startsWith('B'))).reduce((n, s) => n + (day === 'WEEK' ? s.weekTotal : s.byDay[day] ?? 0), 0);
+    (slots ?? []).filter((s) => !s.slot.startsWith('B') && !s.slot.startsWith('IL')).reduce((n, s) => n + (day === 'WEEK' ? s.weekTotal : s.byDay[day] ?? 0), 0);
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16 }}>
@@ -78,7 +78,8 @@ export function MatchupView({ week, weeks, onWeek, home, away, homeScore, awaySc
         <>
           <Roster title="HITTERS" pick={(s) => HIT.has(s.slot)} sides={sides} day={day} home={home} away={away} />
           <Roster title="PITCHERS" pick={(s) => PIT.has(s.slot)} sides={sides} day={day} home={home} away={away} />
-          <Roster title="BENCH" pick={(s) => !HIT.has(s.slot) && !PIT.has(s.slot)} sides={sides} day={day} home={home} away={away} />
+          <Roster title="BENCH" pick={(s) => s.slot.startsWith('B')} sides={sides} day={day} home={home} away={away} />
+          <Roster title="INJURED LIST" pick={(s) => s.slot.startsWith('IL')} sides={sides} day={day} home={home} away={away} />
         </>
       )}
     </ScrollView>

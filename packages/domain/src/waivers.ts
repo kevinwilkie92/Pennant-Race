@@ -7,7 +7,8 @@ import { ROSTER_SIZE } from './index';
 //  - a player dropped in this run can't be claimed in the same run, and a player added in this run can't be dropped in it.
 
 export type Claim = { id: number; teamId: string; addId: number; dropId: number | null; bid: number; priority: number };
-export type WaiverTeam = { faab: number; roster: Set<number>; waiverPos: number };
+/** `exempt`: roster players who don't count toward the limit (injured, in an IL slot). */
+export type WaiverTeam = { faab: number; roster: Set<number>; waiverPos: number; exempt?: Set<number> };
 export type Outcome = {
   claimId: number; teamId: string; addId: number; dropId: number | null; bid: number; won: boolean; reason?: string;
 };
@@ -20,7 +21,8 @@ export function resolveWaivers(
 ): { outcomes: Outcome[]; waiverPos: Record<string, number> } {
   // Work on copies so callers keep their original state.
   const st: Record<string, WaiverTeam> = {};
-  for (const [id, t] of Object.entries(teams)) st[id] = { faab: t.faab, roster: new Set(t.roster), waiverPos: t.waiverPos };
+  for (const [id, t] of Object.entries(teams)) st[id] = { faab: t.faab, roster: new Set(t.roster), waiverPos: t.waiverPos, exempt: new Set(t.exempt ?? []) };
+  const active = (t: WaiverTeam) => [...t.roster].filter((p) => !t.exempt!.has(p)).length;
   const taken = new Set(owned);
   const justAdded = new Set<number>();
   const queue = new Map<string, Claim[]>();
@@ -43,7 +45,9 @@ export function resolveWaivers(
     if (c.bid > t.faab) { fail('Not enough FAAB'); continue; }
     if (c.dropId != null && justAdded.has(c.dropId)) { fail('You can’t drop a player you just added'); continue; }
     if (c.dropId != null && !t.roster.has(c.dropId)) { fail('The player you chose to drop is no longer on your roster'); continue; }
-    if (t.roster.size - (c.dropId != null ? 1 : 0) + 1 > rosterSize) { fail('Roster full — choose a player to drop'); continue; }
+    // Dropping an injured (exempt) player doesn't free an active spot.
+    const frees = c.dropId != null && !t.exempt!.has(c.dropId) ? 1 : 0;
+    if (active(t) - frees + 1 > rosterSize) { fail('Roster full — choose a player to drop'); continue; }
 
     t.faab -= c.bid;
     if (c.dropId != null) t.roster.delete(c.dropId); // stays in `taken`: not claimable again this run

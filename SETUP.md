@@ -112,7 +112,7 @@ To preview a finished season in the app, build with `EXPO_PUBLIC_AS_OF=2027-10-0
 - Under the hood: `lineup_history` (one row per slot change with its effective date) lets the feed credit each day's points
   to the slot the player held that day. Not built: "Optimize" (needs projections), lineup views for other teams.
 
-Run `npm run test:e2e` to run every end-to-end suite (keepers, league, lineup, waivers, trades) against a fresh local database; no network needed.
+Run `npm run test:e2e` to run every end-to-end suite (keepers, league, lineup, waivers, trades, extras) against a fresh local database; no network needed.
 
 ## Players, waivers and FAAB
 
@@ -151,7 +151,22 @@ Past trades show under *Past trades* and in **League → Activity**.
 - A pending waiver claim that planned to drop a traded-away player loses that drop.
 - No trade deadline, counter-offers, or multi-team trades.
 
-Not built yet: a waiver-period after drops, injured list, player cards with stats.
+## Waiver period, injured list, player card
+
+**Waiver period:** a player dropped (outright or by a winning claim) goes on waivers for **2 days** — the commissioner changes this under
+My Team → Transactions (0 = claimable at the next run). Claims for him are allowed but **wait** (stay pending) until the period clears, then
+compete normally. Trades don't trigger it. The Players tab and the add sheet show "On waivers until …".
+
+**Injured list:** 4 IL slots (IL1–IL4) sit outside the 26-player roster. A player can go there only if he's ruled **IL or OUT** (day-to-day can't), and only
+while injured does he stop counting toward the 26 — a healed player left on IL counts again. Dropping an IL player doesn't free an active spot,
+and the claim and trade roster-limit checks use the active count. IL players show their points but aren't counted in the day's total.
+Injury status is **entered by the commissioner** (status chips in the lineup sheet) until the stats feed supplies it.
+
+**Player card:** tap a player in the Players tab (or *Player card* in the lineup sheet): owner or waiver status, injury, a points-by-day chart (negative days drawn
+downward in red) built from `daily_points`, and the full history — draft/keeper price, waiver adds, drops and trades. **Season, game-log and career stats
+need the stats feed**, so the card says so instead of showing numbers.
+
+Not built yet: stats-based views (Trending, Leaders, game log, career), injury notes and 15/60-day IL types, a commissioner screen for league settings beyond the waiver period.
 
 ## Stats feed — NOT connected yet
 
@@ -173,7 +188,7 @@ The feed also needs to fill `mlb_game` (first-pitch times, for the lineup lock) 
 Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code, roster / draft-state /
 commissioner sale + undo endpoints with server-side bid validation, live draft broadcast (Durable Object WebSocket),
 the TV draft board, the phone draft companion, the keepers picker + season push, the schedule / standings / matchup /
-bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, and the app's login, My Team, League, and theme switcher
+bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
 Next, roughly in order: connect the stats feed (above), chat, editing archived draft results, team logo upload (R2), Google/Apple sign-in, and a

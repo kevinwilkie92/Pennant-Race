@@ -27,7 +27,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 export type Team = { id: string; owner: string; name: string; color: string; logoKey: string | null; faab: number };
 export type RosterSlot = {
   slot: string; playerId: number; name: string; mlbTeam: string | null; pos: string; pos2: string | null;
-  positions: string[]; keeperYear: number | null; price: number | null;
+  positions: string[]; keeperYear: number | null; price: number | null; injury?: string | null;
 };
 export type Me = { user: { id: string; email: string; teamId: string | null; isCommissioner: boolean }; team: { id: string; name: string; color: string; owner_name: string; faab: number } | null };
 
@@ -67,10 +67,17 @@ export type WeekSlot = RosterSlot & { byDay: Record<string, number>; weekTotal: 
 // Demo/testing only: pretend "today" is this date so completed weeks can be viewed before a season starts.
 const AS_OF = process.env.EXPO_PUBLIC_AS_OF ? `&asOf=${process.env.EXPO_PUBLIC_AS_OF}` : '';
 
-export type PoolPlayer = { id: number; name: string; mlbTeam: string | null; pos: string; positions: string[]; ownerId: string | null; watched: boolean };
+export type PoolPlayer = { id: number; name: string; mlbTeam: string | null; pos: string; positions: string[]; ownerId: string | null; watched: boolean; injury?: string | null; waiversUntil?: string | null };
 export type Claim = {
   id: number; teamId: string; addId: number; dropId: number | null; bid: number; priority: number; status: string;
-  reason: string | null; addName?: string; dropName?: string | null; processedAt: number | null;
+  reason: string | null; addName?: string; dropName?: string | null; processedAt: number | null; waiversUntil?: string | null;
+};
+export type PlayerCardData = {
+  player: { id: number; name: string; mlbTeam: string | null; positions: string[] };
+  ownerId: string | null; injury: { status: string; note: string | null } | null; waiversUntil: string | null;
+  draft: { season: number; teamId: string; price: number; isKeeper: number; keeperYear: number | null }[];
+  history: { type: string; teamId: string; from?: string; faab: number | null; at: number }[];
+  points: { date: string; teamId: string; slot: string; points: number }[]; seasonPoints: number;
 };
 export type Txn = { id: number; type: 'draft' | 'waiver' | 'trade' | 'add' | 'drop'; teamId: string; faab: number | null; at: number; player: string | null; detail?: string | null };
 
@@ -135,6 +142,11 @@ export const api = {
   acceptTrade: (id: number) => call<{ ok: true }>(`/trades/${id}/accept`, { method: 'POST' }),
   rejectTrade: (id: number) => call<{ ok: true }>(`/trades/${id}/reject`, { method: 'POST' }),
   cancelTrade: (id: number) => call<{ ok: true }>(`/trades/${id}/cancel`, { method: 'POST' }),
+  setStatus: (playerId: number, status: 'DTD' | 'IL' | 'OUT' | null) =>
+    call<{ ok: true }>(`/players/${playerId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  playerCard: (id: number) => call<PlayerCardData>(`/players/${id}/card`),
+  leagueSettings: () => call<{ waiverDays: number }>('/league/settings'),
+  setWaiverDays: (waiverDays: number) => call<{ waiverDays: number }>('/league/settings', { method: 'PUT', body: JSON.stringify({ waiverDays }) }),
   weeks: () => call<{ season: number | null; current: number | null; weeks: WeekInfo[] }>(`/weeks?x=1${AS_OF}`),
   matchups: (week: number) => call<MatchupRow[]>(`/matchups?week=${week}${AS_OF}`),
   standings: () => call<{ season: number | null; playoffTeams: number; rows: StandingRow[] }>(`/standings?x=1${AS_OF}`),
