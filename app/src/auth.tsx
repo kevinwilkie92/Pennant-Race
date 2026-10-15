@@ -6,10 +6,11 @@ type AuthState = {
   ready: boolean;
   me: Me | null;
   signIn: (email: string, password: string) => Promise<void>;
+  signInWithToken: (token: string) => Promise<void>;   // after a Google/Apple sign-in
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;   // re-read your account and team (after renaming, new logo…)
 };
-const Ctx = createContext<AuthState>({ ready: false, me: null, signIn: async () => {}, signOut: async () => {}, refresh: async () => {} });
+const Ctx = createContext<AuthState>({ ready: false, me: null, signIn: async () => {}, signInWithToken: async () => {}, signOut: async () => {}, refresh: async () => {} });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -32,6 +33,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await saveItem('prToken', token);
     setMe(await api.me());
   };
+  const signInWithToken = async (token: string) => {
+    setToken(token);
+    await saveItem('prToken', token);
+    setMe(await api.me());
+  };
   const signOut = async () => {
     try { await api.logout(); } catch { /* token may already be invalid */ }
     setToken(null);
@@ -39,6 +45,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setMe(null);
   };
   const refresh = async () => { try { setMe(await api.me()); } catch { /* keep what we have */ } };
-  return <Ctx.Provider value={{ ready, me, signIn, signOut, refresh }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ ready, me, signIn, signInWithToken, signOut, refresh }}>{children}</Ctx.Provider>;
 }
 export const useAuth = () => useContext(Ctx);

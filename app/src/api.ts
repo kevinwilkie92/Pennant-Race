@@ -7,7 +7,7 @@ export const setToken = (t: string | null) => { token = t; };
 export const getToken = () => token;
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string, public data: Record<string, unknown> = {}) { super(message); }
 }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -20,7 +20,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, (body as { error?: string }).error ?? `Request failed (${res.status})`);
+  if (!res.ok) throw new ApiError(res.status, (body as { error?: string }).error ?? `Request failed (${res.status})`, body as Record<string, unknown>);
   return body as T;
 }
 
@@ -103,6 +103,9 @@ export const chatImageUrl = (key?: string | null) => (key ? `${API_URL}/chat-ima
 export const api = {
   login: (email: string, password: string) =>
     call<{ token: string }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  providers: () => call<import('./social').ProviderConfig>('/auth/providers'),
+  social: (b: { provider: string; idToken: string; nonce: string; joinCode?: string; teamId?: string }) =>
+    call<{ token: string }>('/auth/social', { method: 'POST', body: JSON.stringify(b) }),
   register: (b: { email: string; password: string; teamId: string; joinCode: string }) =>
     call<{ token: string }>('/auth/register', { method: 'POST', body: JSON.stringify(b) }),
   logout: () => call<{ ok: true }>('/auth/logout', { method: 'POST' }),

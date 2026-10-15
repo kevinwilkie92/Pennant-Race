@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Image, ImageBackground, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Redirect } from 'expo-router';
-import { api, setToken } from '../src/api';
+import { ApiError, api, setToken } from '../src/api';
 import { useAuth } from '../src/auth';
 import { saveItem } from '../src/storage';
+import { SocialButtons } from '../src/SocialButtons';
+import type { ProviderConfig, SocialCredential } from '../src/social';
 import { FONT } from '../src/theme';
 
 // Login always uses dark styling regardless of theme (README).
 const C = { text: '#fff', dim: '#90a4bf', line: 'rgba(255,255,255,0.14)', red: '#e22634', card: 'rgba(10,26,48,0.86)' };
 
 export default function Login() {
-  const { me, signIn } = useAuth();
+  const { me, signIn, signInWithToken } = useAuth();
   const [mode, setMode] = useState<'in' | 'join'>('in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,14 +22,34 @@ export default function Login() {
   const [teams, setTeams] = useState<{ id: string; name: string; owner: string; claimed: number }[]>([]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [providers, setProviders] = useState<ProviderConfig>({ google: null, apple: null });
+  // A Google/Apple sign-in that needs the league join code + team before an account can be created.
+  const [pending, setPending] = useState<SocialCredential | null>(null);
 
+  useEffect(() => { api.providers().then(setProviders).catch(() => {}); }, []);
   useEffect(() => {
     if (mode === 'join' && teams.length === 0) api.publicTeams().then(setTeams).catch(() => setErr('Could not reach the server'));
   }, [mode]);
 
   if (me) return <Redirect href="/team" />;
 
+  const social = async (cred: SocialCredential, extra?: { joinCode: string; teamId: string }) => {
+    setErr(''); setBusy(true);
+    try {
+      const { token } = await api.social({ ...cred, ...extra });
+      setPending(null);
+      await signInWithToken(token);
+    } catch (e) {
+      if (e instanceof ApiError && e.data.needsSignup) { setPending(cred); setMode('join'); setErr(''); }
+      else setErr(e instanceof Error ? e.message : 'Something went wrong');
+    } finally { setBusy(false); }
+  };
+
   const submit = async () => {
+    if (pending) {
+      if (!joinCode || !teamId) return setErr('Enter the join code and choose your team');
+      return social(pending, { joinCode, teamId });
+    }
     setErr(''); setBusy(true);
     try {
       if (mode === 'in') await signIn(email, password);
@@ -56,6 +78,12 @@ export default function Login() {
           </View>
 
           <View style={{ backgroundColor: C.card, borderColor: C.line, borderWidth: 1, borderRadius: 16, padding: 18, maxWidth: 440, width: '100%', alignSelf: 'center' }}>
+            {pending ? (
+              <Text style={{ color: C.text, fontFamily: FONT.bodyMedium, fontSize: 14, marginBottom: 12 }}>
+                Almost there: enter the league join code and pick your team to finish setting up your {pending.provider === 'google' ? 'Google' : 'Apple'} sign-in.
+              </Text>
+            ) : (
+              <>
             <TextInput style={input} placeholder="Email" placeholderTextColor={C.dim} autoCapitalize="none" keyboardType="email-address"
               value={email} onChangeText={setEmail} />
             <View>
@@ -65,6 +93,9 @@ export default function Login() {
                 <Text style={{ color: C.dim, fontFamily: FONT.bodySemi }}>{show ? 'HIDE' : 'SHOW'}</Text>
               </Pressable>
             </View>
+
+              </>
+            )}
 
             {mode === 'join' && (
               <>
@@ -89,10 +120,17 @@ export default function Login() {
               <Text style={{ color: '#fff', fontFamily: FONT.display, fontSize: 18, letterSpacing: 1 }}>{mode === 'in' ? 'SIGN IN' : 'JOIN LEAGUE'}</Text>
             </Pressable>
 
-            {/* Google / Apple sign-in are planned; they need OAuth client IDs configured on the API. */}
-            <Pressable onPress={() => { setErr(''); setMode(mode === 'in' ? 'join' : 'in'); }} style={{ marginTop: 14, alignItems: 'center' }}>
+            {!pending && (
+              <>
+                {(providers.google || providers.apple) && (
+                  <Text style={{ color: C.dim, fontFamily: FONT.bodySemi, fontSize: 12, letterSpacing: 2, textAlign: 'center', marginTop: 16 }}>OR</Text>
+                )}
+                <SocialButtons config={providers} disabled={busy} onCredential={(c) => social(c)} onError={setErr} />
+              </>
+            )}
+            <Pressable onPress={() => { setErr(''); if (pending) { setPending(null); setMode('in'); } else setMode(mode === 'in' ? 'join' : 'in'); }} style={{ marginTop: 14, alignItems: 'center' }}>
               <Text style={{ color: C.dim, fontFamily: FONT.bodySemi }}>
-                {mode === 'in' ? 'New here? Join with your league code' : 'Already have an account? Sign in'}
+                {pending ? 'Cancel' : mode === 'in' ? 'New here? Join with your league code' : 'Already have an account? Sign in'}
               </Text>
             </Pressable>
           </View>

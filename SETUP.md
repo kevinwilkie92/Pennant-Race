@@ -85,6 +85,44 @@ npx wrangler pages deploy dist --project-name pennant-race
 
 For the phone apps, build with EAS (`npx eas build`) pointing at the same API URL.
 
+## Sign in with Google / Apple
+
+Built and tested against locally signed test tokens, but **never against the real Google/Apple services**: this cloud
+environment can't reach them and you need to create the credentials yourself. Until you do, the buttons simply don't appear.
+
+How it works: the app gets an ID token from the provider, `POST /auth/social` verifies its signature, issuer, audience,
+expiry and a per-attempt nonce, and then
+- a provider account you've used before signs straight in;
+- a verified email that matches an existing account links to it (an *unverified* email never does);
+- otherwise it asks for the league join code and an unclaimed team, exactly like email sign-up.
+Provider-created accounts have no password. Apple's "hide my email" relay address works; a missing email gets a placeholder.
+
+**Google** (Google Cloud Console → APIs & Services → Credentials):
+1. Configure the OAuth consent screen (External, add your league as test users or publish).
+2. Create an **OAuth client ID → Web application**. Add your site's address under *Authorized JavaScript origins*
+   (for example `https://pennant-race.pages.dev`, plus `http://localhost:8081` for testing). That ID is the one the web app uses.
+3. For the phone apps, also create an **iOS** and an **Android** client ID, and give them to the app as
+   `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` / `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` when you build it.
+4. Tell the API every ID it should trust, web one first: `GOOGLE_CLIENT_IDS` below.
+
+**Apple** (developer.apple.com → Certificates, Identifiers & Profiles; needs the paid developer account):
+1. Make sure your App ID has *Sign in with Apple* enabled (this is the native iOS audience, your bundle id).
+2. For the web, create a **Services ID** (for example `org.example.pennantrace.web`), enable Sign in with Apple, and register your site's
+   domain and a return URL of your site's address.
+3. Tell the API: `APPLE_CLIENT_IDS` below, Services ID first, then the bundle id.
+
+Give the API the IDs (they're public, so plain variables are fine). In `api/wrangler.toml`:
+
+```toml
+[vars]
+GOOGLE_CLIENT_IDS = "1234-web.apps.googleusercontent.com,1234-ios.apps.googleusercontent.com"
+APPLE_CLIENT_IDS = "org.example.pennantrace.web,org.example.pennantrace"
+```
+
+then `npx wrangler deploy`. Native Google and Apple buttons use `expo-auth-session` / `expo-apple-authentication` and need a
+development or production build (they don't run in Expo Go). The native flows have **not** been run on a device.
+`GOOGLE_JWKS_URL` / `APPLE_JWKS_URL` exist only so the end-to-end tests can point at a local key server; never set them in production.
+
 ## Matchups, standings and playoffs
 
 The commissioner opens **League** and enters the Monday week 1 starts; that creates 26 Monday–Sunday weeks and a
@@ -219,7 +257,7 @@ The feed also needs to fill `mlb_game` (first-pitch times, for the lineup lock) 
 Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code, roster / draft-state /
 commissioner sale + undo endpoints with server-side bid validation, live draft broadcast (Durable Object WebSocket),
 the TV draft board, the phone draft companion, the keepers picker + season push, the schedule / standings / matchup /
-bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, the live "on the block" nomination (the commissioner's DRAFT click puts the player, leader and bid on the TV board and every phone's NOW BIDDING strip; it clears on cancel, sale or a new hat draw, expires after 15 minutes, and late joiners get it on connect), archived-draft corrections (on a FINAL season's Draft Log the commissioner can change a price, change who drafted a player, or remove a sale; a team change also moves him on that team's frozen roster, the $300 budget and roster-room rules still apply, and keeper sales and players kept into a later season are locked), and the app's login, My Team, League, and theme switcher
+bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, the live "on the block" nomination (the commissioner's DRAFT click puts the player, leader and bid on the TV board and every phone's NOW BIDDING strip; it clears on cancel, sale or a new hat draw, expires after 15 minutes, and late joiners get it on connect), Google/Apple sign-in (see its section), archived-draft corrections (on a FINAL season's Draft Log the commissioner can change a price, change who drafted a player, or remove a sale; a team change also moves him on that team's frozen roster, the $300 budget and roster-room rules still apply, and keeper sales and players kept into a later season are locked), and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
-Next, roughly in order: connect the stats feed (above) and Google/Apple sign-in.
+Next, roughly in order: connect the stats feed (above), then group DMs, read receipts, search and push notifications.

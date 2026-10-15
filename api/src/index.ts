@@ -11,6 +11,7 @@ import { broadcast, room } from './realtime';
 import type { Nomination } from './draft-room';
 import { registerDraftEdit } from './draft-edit';
 import { registerLeague } from './league';
+import { registerSocial } from './social';
 import { registerChat } from './chat';
 import { registerLineup } from './lineup';
 import { processWaivers, registerPlayers } from './players';
@@ -383,6 +384,7 @@ async function liveSeason(env: Env): Promise<number | null> {
 }
 
 registerDraftEdit(app);
+registerSocial(app);
 registerLeague(app);
 registerLineup(app);
 registerPlayers(app);
