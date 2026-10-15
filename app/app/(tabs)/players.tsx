@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { api, type PoolPlayer } from '../../src/api';
+import { api, type LeaderRow, type PoolPlayer } from '../../src/api';
 import { AddSheet } from '../../src/AddSheet';
 import { PlayerCard } from '../../src/PlayerCard';
 import { useLeague } from '../../src/useLeague';
@@ -71,12 +71,7 @@ export default function Players() {
         </View>
 
         {needsFeed ? (
-          <Card style={{ padding: 18 }}>
-            <Display style={{ fontSize: 20 }}>{sub === 'trending' ? 'Trending' : 'Leaders'}</Display>
-            <Body style={{ color: t.dim, marginTop: 6 }}>
-              This view ranks players by recent production, so it needs the live MLB stats feed. It lights up once the feed is connected.
-            </Body>
-          </Card>
+          <Leaders sub={sub as 'trending' | 'leaders'} onCard={setCardId} onAdd={setAdding} myTeam={me?.user.teamId ?? null} />
         ) : (
           <>
             <TextInput value={q} onChangeText={setQ} placeholder="Search players" placeholderTextColor={t.dim2} autoCapitalize="none"
@@ -151,5 +146,63 @@ export default function Players() {
       <AddSheet player={adding} teamId={me?.user.teamId ?? null} onClose={() => setAdding(null)}
         onDone={(m) => { setAdding(null); setToast(m); setTimeout(() => setToast(''), 5000); }} />
     </View>
+  );
+}
+
+
+const WINDOWS = [{ k: '7', label: '7 days' }, { k: '14', label: '14 days' }, { k: '30', label: '30 days' }, { k: 'season', label: 'Season' }];
+
+/** Trending = the last 7 days; Leaders = pick a window. Points are our league's scoring, from the MLB feed. */
+function Leaders({ sub, onCard, onAdd, myTeam }: { sub: 'trending' | 'leaders'; onCard: (id: number) => void; onAdd: (p: PoolPlayer) => void; myTeam: string | null }) {
+  const { t } = useTheme();
+  const [win, setWin] = useState('season');
+  const [role, setRole] = useState<'ALL' | 'H' | 'P'>('ALL');
+  const [free, setFree] = useState(false);
+  const [data, setData] = useState<{ season: number | null; through?: string; players: LeaderRow[] } | null>(null);
+  const window = sub === 'trending' ? '7' : win;
+  useEffect(() => {
+    setData(null);
+    api.leaders({ window, role: role === 'ALL' ? undefined : role, free }).then(setData).catch(() => setData({ season: null, players: [] }));
+  }, [window, role, free]);
+  const chip = (on: boolean, label: string, press: () => void) => (
+    <Pressable key={label} onPress={press} style={{ paddingHorizontal: 12, paddingVertical: 6, marginRight: 6, borderRadius: t.radius.chip, borderWidth: 1, borderColor: on ? t.red : t.line, backgroundColor: on ? t.red : 'transparent' }}>
+      <Display style={{ fontSize: 12.5, color: on ? '#fff' : t.dim }}>{label}</Display>
+    </Pressable>
+  );
+  return (
+    <>
+      <Display style={{ fontSize: 20, marginBottom: 2 }}>{sub === 'trending' ? 'Hot this week' : 'Leaders'}</Display>
+      <Body style={{ color: t.dim, fontSize: 12, marginBottom: 10 }}>
+        Fantasy points{data?.through ? ` through ${data.through}` : ''}{data?.season ? ` · ${data.season} season` : ''}
+      </Body>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+        {sub === 'leaders' && WINDOWS.map((w) => chip(win === w.k, w.label, () => setWin(w.k)))}
+      </ScrollView>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+        {chip(role === 'ALL', 'All', () => setRole('ALL'))}{chip(role === 'H', 'Hitters', () => setRole('H'))}{chip(role === 'P', 'Pitchers', () => setRole('P'))}
+        {chip(free, 'Available only', () => setFree(!free))}
+      </ScrollView>
+      {!data ? <ActivityIndicator color={t.red} /> : data.players.length === 0 ? (
+        <Body style={{ color: t.dim, padding: 20, textAlign: 'center' }}>{data.season == null ? 'No scored games yet. Scores appear once the MLB feed has pulled some games.' : 'No players match.'}</Body>
+      ) : (
+        <Card style={{ overflow: 'hidden' }}>
+          {data.players.map((p, i) => (
+            <View key={`${p.id}${p.role}`} style={{ flexDirection: 'row', alignItems: 'center', padding: 10, gap: 10, borderTopWidth: i ? 1 : 0, borderTopColor: t.line }}>
+              <Body style={{ width: 22, color: t.dim2, fontFamily: FONT.bodyBold }}>{i + 1}</Body>
+              <Pressable style={{ flex: 1 }} onPress={() => onCard(p.id)}>
+                <Body numberOfLines={1} style={{ fontFamily: FONT.bodyBold, fontSize: 15 }}>{p.name}</Body>
+                <Body style={{ color: t.dim, fontSize: 12 }}>{p.mlbTeam ?? 'FA'} · {p.positions.join(',')} · {p.games} G</Body>
+              </Pressable>
+              <Display style={{ fontSize: 18, width: 54, textAlign: 'right' }}>{p.points}</Display>
+              {p.ownerId ? <Body style={{ width: 46, textAlign: 'right', color: p.ownerId === myTeam ? t.gold : t.dim, fontFamily: FONT.bodyBold, fontSize: 11 }}>{p.ownerId === myTeam ? 'YOURS' : p.ownerId}</Body> : (
+                <Pressable onPress={() => onAdd({ id: p.id, name: p.name, mlbTeam: p.mlbTeam, pos: p.pos, positions: p.positions, ownerId: null, watched: false })} style={{ backgroundColor: t.red, borderRadius: t.radius.chip, paddingHorizontal: 10, paddingVertical: 6 }}>
+                  <Display style={{ fontSize: 12, color: '#fff' }}>+ ADD</Display>
+                </Pressable>
+              )}
+            </View>
+          ))}
+        </Card>
+      )}
+    </>
   );
 }

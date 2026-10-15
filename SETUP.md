@@ -145,7 +145,7 @@ To preview a finished season in the app, build with `EXPO_PUBLIC_AS_OF=2027-10-0
 - **Day stepper:** past days show the lineup *as it was* and the actual points; today and future days are editable.
   A change applies from the day you make it (or a future day you pick) — it never rewrites history.
 - **First-pitch lock:** once a player's MLB team has started its game that day he can't be moved, and nobody can swap
-  into his slot. Locks need game start times in the `mlb_game` table, which the stats feed will fill; until then nothing locks.
+  into his slot. Locks use the real first-pitch times the stats feed saves.
 - Bench points are shown but not counted in the day's total.
 - Under the hood: `lineup_history` (one row per slot change with its effective date) lets the feed credit each day's points
   to the slot the player held that day. Not built: "Optimize" (needs projections), lineup views for other teams.
@@ -156,7 +156,7 @@ Run `npm run test:e2e` to run every end-to-end suite (keepers, league, lineup, w
 
 **Players tab:** *Available* (free agents), *Watchlist* (per user, ☆/★), search that ignores accents, position chips,
 sortable by player / position / team. **+ ADD** opens a claim: a FAAB bid ($0 allowed) and, if you want, a player to drop
-(required when your 26-man roster is full). *Trending* and *Leaders* rank by recent production, so they show a note until the stats feed is connected.
+(required when your 26-man roster is full). *Trending* and *Leaders* rank players by fantasy points from the stats feed.
 **My Team → Transactions:** pending claims (reorder priority ▲▼, change the bid, change who you drop, cancel), results of past runs
 (including why a claim lost), and your team's activity. **League → Activity** is the league-wide log. Dropping a player outright is in the lineup sheet.
 
@@ -198,13 +198,12 @@ compete normally. Trades don't trigger it. The Players tab and the add sheet sho
 **Injured list:** 4 IL slots (IL1–IL4) sit outside the 26-player roster. A player can go there only if he's ruled **IL or OUT** (day-to-day can't), and only
 while injured does he stop counting toward the 26 — a healed player left on IL counts again. Dropping an IL player doesn't free an active spot,
 and the claim and trade roster-limit checks use the active count. IL players show their points but aren't counted in the day's total.
-Injury status is **entered by the commissioner** (status chips in the lineup sheet) until the stats feed supplies it.
+Injury status comes from MLB's injured list via the stats feed; the commissioner can also set it by hand (status chips in the lineup sheet) and a hand-set status is never overwritten.
 
 **Player card:** tap a player in the Players tab (or *Player card* in the lineup sheet): owner or waiver status, injury, a points-by-day chart (negative days drawn
-downward in red) built from `daily_points`, and the full history — draft/keeper price, waiver adds, drops and trades. **Season, game-log and career stats
-need the stats feed**, so the card says so instead of showing numbers.
+downward in red) built from `daily_points`, and the full history — draft/keeper price, waiver adds, drops and trades. It also shows this season's totals and recent games from the stats feed (career totals aren't built).
 
-Not built yet: stats-based views (Trending, Leaders, game log, career), injury notes and 15/60-day IL types, a commissioner screen for league settings beyond the waiver period.
+Not built yet: career stats, 15/60-day IL types, a commissioner screen for league settings beyond the waiver period.
 
 ## League chat and direct messages
 
@@ -237,27 +236,40 @@ Tap the logo (⚙) on your My Team card → **Team settings**.
   the old file is deleted on replace/remove. The server checks the file's real bytes — not its label — and rejects anything over 2 MB, SVG (can carry scripts), GIF and non-images.
   Logos are served without sign-in (images can't send credentials) with `nosniff` and a sandboxing CSP.
 
-## Stats feed — NOT connected yet
+## Stats feed (MLB Stats API)
 
-Points come from the `daily_points` table (`season, date, team_id, player_id, slot, points`); everything above reads it.
-The MLB Stats API (`statsapi.mlb.com`) is the chosen source, but the cloud environment this was built in blocks that host,
-so no ingestion code exists yet and **every score is 0 until it does**. To finish it:
+Connected. The Worker pulls box scores from `statsapi.mlb.com` (free, no key) and scores them with the league rules:
+hitters `1B 1, 2B 2, 3B 3, HR 4, BB 1, IBB 1, R 1, RBI 1, SB 2, SO -1`; pitchers `IP 3, K 1, W 2, QS 5, SV 5, HLD 2, CG 3, SHO 3, ER -2, H -1, BB -1`.
+(MLB's walk total includes intentional walks, so each walk is counted once. A quality start is 6+ IP and 3 or fewer ER.)
 
-1. Allow `statsapi.mlb.com` in the environment's network settings (or run the work on a machine that can reach it).
-2. Map our players to MLB person ids (new `player.mlb_id` column; match by name + team, review the misses by hand).
-3. A scheduled Worker (Cron Trigger) pulls each day's schedule and boxscores, turns them into stat lines, scores them with
-   `scoreHitter` / `scorePitcher` (helpers `parseInnings`, `isQualityStart`, `singles` are in `@pennant/domain`), and writes `daily_points`.
-4. Update `player_position` from games played/started so eligibility (5 starts / 10 games; SP after 3 starts, RP after 5 relief apps) follows the real season.
+**First-time setup, as commissioner** (Team settings → *MLB stats feed*):
+1. **Match players**: pairs our players with MLB's ids by name and team (checked against live data: about 99% match; a handful, such as
+   free agents with odd spellings, are listed so you can paste an id by hand).
+2. **Pull games**: pick a date range. Scores each game, then credits every team's lineup as it stood that day to the slot each player held.
+   Use a wide range to backfill a whole season (it works a week at a time).
+3. **Refresh injuries and positions**: optional, it also runs by itself every morning.
 
-The feed also needs to fill `mlb_game` (first-pitch times, for the lineup lock) and should write each `daily_points` row's
-`slot` from `lineup_history` (the slot he held that day) — the `/teams/:id/lineup?date=` endpoint already shows how to resolve it.
+After that it runs on its own (see the `crons` in `api/wrangler.toml`): every 10 minutes during games for live scores,
+about 3-4am Eastern to settle yesterday, and about 4:30am Eastern for injuries and positions.
+Finished games are never fetched twice; a live game's points are replaced each refresh, not added.
+
+What it feeds:
+- **Matchups and standings**: weekly team totals come from each day's lineup. Bench and injured-list points are recorded but don't count.
+- **First-pitch lineup locks**: the real game start times are saved, so a player locks when his game begins.
+- **Players tab**: *Trending* (last 7 days) and *Leaders* (7/14/30 days or the season), filterable by hitters/pitchers and available-only.
+- **Player cards**: season totals and recent games.
+- **Injured list**: MLB's injured-list players are marked IL automatically. Statuses you set by hand are never overwritten or cleared.
+- **Position eligibility**: 5 starts or 10 appearances at a position (hitters), 3 starts for SP, 5 relief appearances for RP, counted over
+  this and last season. Earned positions are only ever added. Games before the feed was connected don't count toward this.
+
+Notes: *Trending* is "hottest this week" by points, not "most added". Postseason games aren't scored. `MLB_API_BASE` exists only so the tests can point at a fake MLB server.
 
 ## What's built vs. next
 
 Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code, roster / draft-state /
 commissioner sale + undo endpoints with server-side bid validation, live draft broadcast (Durable Object WebSocket),
 the TV draft board, the phone draft companion, the keepers picker + season push, the schedule / standings / matchup /
-bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, the live "on the block" nomination (the commissioner's DRAFT click puts the player, leader and bid on the TV board and every phone's NOW BIDDING strip; it clears on cancel, sale or a new hat draw, expires after 15 minutes, and late joiners get it on connect), Google/Apple sign-in (see its section), archived-draft corrections (on a FINAL season's Draft Log the commissioner can change a price, change who drafted a player, or remove a sale; a team change also moves him on that team's frozen roster, the $300 budget and roster-room rules still apply, and keeper sales and players kept into a later season are locked), and the app's login, My Team, League, and theme switcher
+bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, the live "on the block" nomination (the commissioner's DRAFT click puts the player, leader and bid on the TV board and every phone's NOW BIDDING strip; it clears on cancel, sale or a new hat draw, expires after 15 minutes, and late joiners get it on connect), the MLB stats feed (see its section), Google/Apple sign-in (see its section), archived-draft corrections (on a FINAL season's Draft Log the commissioner can change a price, change who drafted a player, or remove a sale; a team change also moves him on that team's frozen roster, the $300 budget and roster-room rules still apply, and keeper sales and players kept into a later season are locked), and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
-Next, roughly in order: connect the stats feed (above), then group DMs, read receipts, search and push notifications.
+Next, roughly in order: group DMs, read receipts, search and push notifications.

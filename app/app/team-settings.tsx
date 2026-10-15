@@ -75,6 +75,12 @@ function Settings() {
         </Pressable>
       </Card>
 
+      {me?.user.isCommissioner && (
+        <Pressable onPress={() => router.push('/stats-feed')} style={{ borderColor: t.line, borderWidth: 1, borderRadius: t.radius.button, padding: 14, marginBottom: 12 }}>
+          <Display style={{ fontSize: 15 }}>MLB stats feed ›</Display>
+          <Body style={{ color: t.dim, fontSize: 12 }}>Commissioner: match players, pull scores, refresh injuries.</Body>
+        </Pressable>
+      )}
       <CropModal image={cropping} onCancel={() => setCropping(null)} onDone={finishCrop} />
       {busy && <ActivityIndicator color={t.red} />}
       {msg && <Body style={{ color: msg.ok ? t.green : t.loss, fontFamily: FONT.bodyMedium }}>{msg.text}</Body>}

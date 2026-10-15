@@ -6,8 +6,17 @@ import { Body, Card, Display } from './ui';
 
 const when = (ms: number) => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 const HEIGHT = 84;
+const ip = (x = 0) => { const outs = Math.round(x * 3); return `${Math.floor(outs / 3)}.${outs % 3}`; };
+const HIT_COLS: [string, (t: Record<string, number>, g: number) => string | number][] = [
+  ['G', (_, g) => g], ['H', (t) => (t['1B'] ?? 0) + (t['2B'] ?? 0) + (t['3B'] ?? 0) + (t.HR ?? 0)], ['HR', (t) => t.HR ?? 0],
+  ['R', (t) => t.R ?? 0], ['RBI', (t) => t.RBI ?? 0], ['SB', (t) => t.SB ?? 0], ['BB', (t) => (t.BB ?? 0) + (t.IBB ?? 0)], ['K', (t) => t.SO ?? 0],
+];
+const PIT_COLS: [string, (t: Record<string, number>, g: number) => string | number][] = [
+  ['G', (_, g) => g], ['IP', (t) => ip(t.IP)], ['W', (t) => t.W ?? 0], ['QS', (t) => t.QS ?? 0], ['SV', (t) => t.SV ?? 0],
+  ['HLD', (t) => t.HLD ?? 0], ['K', (t) => t.K ?? 0], ['ER', (t) => t.ER ?? 0],
+];
 
-/** Player card: what we know from our own data. Season / game-log / career stats arrive with the stats feed. */
+/** Player card: fantasy points, season totals and recent games from the MLB feed, plus the player's league history. */
 export function PlayerCard({ playerId, teamName, onClose }: { playerId: number | null; teamName: (id: string) => string; onClose: () => void }) {
   const { t } = useTheme();
   const [d, setD] = useState<PlayerCardData | null>(null);
@@ -70,9 +79,33 @@ export function PlayerCard({ playerId, teamName, onClose }: { playerId: number |
                         </View>
                       )}
                     </Card>
-                    <Body style={{ color: t.dim2, fontSize: 12 }}>
-                      Season, game-log and career stats (hits, innings, strikeouts…) appear here once the MLB stats feed is connected.
-                    </Body>
+                    {d.stats ? (
+                      <>
+                        <Card style={{ padding: 14, marginBottom: 12 }}>
+                          <Body style={{ color: t.dim, fontFamily: FONT.bodyBold, fontSize: 11, letterSpacing: 1 }}>{d.stats.season} STATS · {d.stats.points} PTS</Body>
+                          <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                            {(d.stats.role === 'P' ? PIT_COLS : HIT_COLS).map(([label, f]) => (
+                              <View key={label} style={{ flex: 1, alignItems: 'center' }}>
+                                <Body style={{ color: t.dim2, fontSize: 10, fontFamily: FONT.bodyBold }}>{label}</Body>
+                                <Display style={{ fontSize: 17 }}>{f(d.stats!.totals, d.stats!.games)}</Display>
+                              </View>
+                            ))}
+                          </View>
+                        </Card>
+                        <Card style={{ overflow: 'hidden' }}>
+                          <Body style={{ color: t.dim, fontFamily: FONT.bodyBold, fontSize: 11, letterSpacing: 1, padding: 12, paddingBottom: 6 }}>RECENT GAMES</Body>
+                          {d.stats.log.map((g, i) => (
+                            <View key={`${g.date}${i}`} style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: t.line, gap: 10 }}>
+                              <Body style={{ color: t.dim, fontSize: 12, width: 52 }}>{g.date.slice(5).replace('-', '/')}</Body>
+                              <Body style={{ flex: 1, fontSize: 13 }}>{g.summary}</Body>
+                              <Display style={{ fontSize: 15, color: g.points < 0 ? t.loss : t.text }}>{g.points}</Display>
+                            </View>
+                          ))}
+                        </Card>
+                      </>
+                    ) : (
+                      <Body style={{ color: t.dim2, fontSize: 12 }}>No MLB games recorded for this player yet.</Body>
+                    )}
                   </>
                 ) : (
                   <Card style={{ overflow: 'hidden' }}>

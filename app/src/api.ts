@@ -83,6 +83,17 @@ export type PlayerCardData = {
   draft: { season: number; teamId: string; price: number; isKeeper: number; keeperYear: number | null }[];
   history: { type: string; teamId: string; from?: string; faab: number | null; at: number }[];
   points: { date: string; teamId: string; slot: string; points: number }[]; seasonPoints: number;
+  stats: PlayerStats | null;
+};
+export type PlayerStats = {
+  season: number; role: 'H' | 'P'; games: number; points: number; totals: Record<string, number>;
+  log: { date: string; points: number; summary: string }[];
+};
+export type LeaderRow = { id: number; name: string; mlbTeam: string | null; pos: string; role: 'H' | 'P'; games: number; points: number; positions: string[]; ownerId: string | null };
+export type FeedStatus = {
+  total: number; mapped: number; games: number; finalGames: number; lastGameDate: string | null;
+  lastSync: { value: { date: string }; at: number } | null; lastError: { value: { date: string; message: string }; at: number } | null;
+  injuries: { value: { set: number; cleared: number }; at: number } | null;
 };
 export type Txn = { id: number; type: 'draft' | 'waiver' | 'trade' | 'add' | 'drop'; teamId: string; faab: number | null; at: number; player: string | null; detail?: string | null };
 
@@ -166,6 +177,18 @@ export const api = {
   cancelTrade: (id: number) => call<{ ok: true }>(`/trades/${id}/cancel`, { method: 'POST' }),
   setStatus: (playerId: number, status: 'DTD' | 'IL' | 'OUT' | null) =>
     call<{ ok: true }>(`/players/${playerId}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  leaders: (q: { window: string; role?: string; pos?: string; free?: boolean }) =>
+    call<{ season: number | null; window: string; through?: string; players: LeaderRow[] }>(
+      `/players/stats?window=${q.window}${q.role ? `&role=${q.role}` : ''}${q.pos && q.pos !== 'ALL' ? `&pos=${q.pos}` : ''}${q.free ? '&free=1' : ''}`),
+  feedStatus: () => call<FeedStatus>('/stats/status'),
+  feedUnmapped: () => call<{ id: number; name: string; mlbTeam: string | null; pos: string; drafted: number }[]>('/stats/unmapped'),
+  feedMap: (step: 'players' | 'rosters' | 'search', from = 0) =>
+    call<{ step: string; matched: number; remaining: number; next: number | null }>('/stats/map-players', { method: 'POST', body: JSON.stringify({ step, from }) }),
+  feedSync: (from: string, to: string) =>
+    call<{ results: { date: string; games: number; fetched: number; rows: number }[] }>('/stats/sync', { method: 'POST', body: JSON.stringify({ from, to }) }),
+  feedRefresh: () => call<{ injuries: { set: number; cleared: number }; eligibility: { added: number } }>('/stats/refresh', { method: 'POST' }),
+  feedSetMlbId: (playerId: number, mlbId: number | null) =>
+    call<{ ok: true }>(`/stats/players/${playerId}/mlb-id`, { method: 'PUT', body: JSON.stringify({ mlbId }) }),
   playerCard: (id: number) => call<PlayerCardData>(`/players/${id}/card`),
   leagueSettings: () => call<{ waiverDays: number }>('/league/settings'),
   setWaiverDays: (waiverDays: number) => call<{ waiverDays: number }>('/league/settings', { method: 'PUT', body: JSON.stringify({ waiverDays }) }),
