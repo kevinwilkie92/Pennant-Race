@@ -1,7 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { router } from 'expo-router';
 import { api, type ChatGroup, type ChatMessage, type ChatReceipt, type ChatWhere, type DmConversation, type GroupConversation } from './api';
 import { ChatOverlay } from './ChatOverlay';
 import { useAuth } from './auth';
+import { onNotificationOpen } from './push';
 import { useRealtime } from './realtime';
 import { useTeams } from './teams';
 
@@ -81,6 +83,23 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     else if (groupIdOf(scope) != null) { api.chatGroupRead(groupIdOf(scope)!, last).then(loadDms).catch(() => {}); }
     else { api.chatDmRead(scope, last).then(loadDms).catch(() => {}); }
   }, [loadDms]);
+
+  // Opening the app from a notification (`/?chat=dm:RC`, `group:5`, `league`) lands in that conversation; other links go to that screen.
+  const openUrl = useCallback((url: string) => {
+    const q = url.match(/[?&]chat=([^&#]+)/)?.[1] ?? null;
+    if (q) {
+      const [kind, id] = q.split(':');
+      setView(kind === 'dm' && id ? { kind: 'dm', team: id } : kind === 'group' && Number(id) ? { kind: 'group', id: Number(id) } : { kind: 'league' });
+      setOpen(true);
+    } else if (url.startsWith('/') && typeof window !== 'undefined' && window.location) window.location.assign(url);
+    else if (url.startsWith('/')) router.push(url as never);
+  }, []);
+  useEffect(() => onNotificationOpen(openUrl), [openUrl]);
+  useEffect(() => {          // the page was opened by tapping a notification
+    if (!userId || typeof window === 'undefined' || !window.location?.search) return;
+    const chat = window.location.search.match(/[?&]chat=([^&#]+)/)?.[1];
+    if (chat) { openUrl(`/?chat=${chat}`); window.history?.replaceState?.(null, '', window.location.pathname); }
+  }, [userId, openUrl]);
 
   // Initial load (and reset on sign-out).
   useEffect(() => {

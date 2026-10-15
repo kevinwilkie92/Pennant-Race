@@ -109,6 +109,7 @@ export type ChatMessage = {
   replyTo: { id: number; teamId?: string; body?: string; hasImage?: boolean; deleted?: boolean } | null;
 };
 export type DmConversation = { team: string; unread: number; last: { id: number; fromMe: boolean; body: string; hasImage: boolean; createdAt: number } };
+export type PushPrefs = { dm: boolean; group: boolean; mention: boolean; trade: boolean; waiver: boolean; preview: boolean };
 export type ChatWhere = { kind: 'league' } | { kind: 'dm'; team: string } | { kind: 'group'; id: number };
 export type ChatHit = { message: ChatMessage; where: ChatWhere };
 export type ChatReceipt = { teamId: string; lastId: number; at: number | null };
@@ -206,6 +207,12 @@ export const api = {
   chatGroupAdd: (id: number, teamId: string) => call<{ group: ChatGroup }>(`/chat/groups/${id}/members`, { method: 'POST', body: JSON.stringify({ teamId }) }),
   chatGroupLeave: (id: number) => call<{ ok: true }>(`/chat/groups/${id}/members/me`, { method: 'DELETE' }),
   chatGroupRead: (groupId: number, lastId: number) => call<{ ok: true }>('/chat/group-read', { method: 'POST', body: JSON.stringify({ groupId, lastId }) }),
+  pushConfig: () => call<{ web: string | null; expo: boolean }>('/push/config'),
+  pushSubscribe: (b: { kind: 'web' | 'expo'; endpoint: string; keys?: { p256dh: string; auth: string } }) => call<{ ok: true }>('/push/subscribe', { method: 'POST', body: JSON.stringify(b) }),
+  pushUnsubscribe: (endpoint: string) => call<{ ok: true }>('/push/subscribe', { method: 'DELETE', body: JSON.stringify({ endpoint }) }),
+  pushPrefs: () => call<PushPrefs>('/push/prefs'),
+  setPushPrefs: (p: Partial<PushPrefs>) => call<PushPrefs>('/push/prefs', { method: 'PUT', body: JSON.stringify(p) }),
+  pushTest: () => call<{ sent: number }>('/push/test', { method: 'POST' }),
   chatSearch: (q: string, scope = 'all', before?: number) =>
     call<{ q: string; results: ChatHit[]; hasMore: boolean }>(`/chat/search?q=${encodeURIComponent(q)}&scope=${encodeURIComponent(scope)}${before ? `&before=${before}` : ''}`),
   chatSettings: () => call<{ readReceipts: boolean }>('/chat/settings'),

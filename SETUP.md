@@ -123,6 +123,30 @@ then `npx wrangler deploy`. Native Google and Apple buttons use `expo-auth-sessi
 development or production build (they don't run in Expo Go). The native flows have **not** been run on a device.
 `GOOGLE_JWKS_URL` / `APPLE_JWKS_URL` exist only so the end-to-end tests can point at a local key server; never set them in production.
 
+## Push notifications
+
+Built and tested end to end against **fake push services** (the encryption is checked by decrypting it the way a browser would, and the signature by verifying it),
+but **never against Google's, Apple's, Mozilla's or Expo's real services**: this cloud environment can't reach them, and you have to create the keys yourself.
+Until you do, the Notifications card in Team settings says it isn't set up and nothing is sent.
+
+**What triggers one** (each person can switch any off, per category, in Team settings → *Notifications*):
+a direct message to you; a new message in a group you are in; an @mention of your team in the league room (ordinary league chat sends nothing); a trade offer to you and the answer to your offers
+(accepted, declined, withdrawn, vetoed); and the result of each waiver claim. *Show message text* off sends only "Open Pennant Race to read it" — the text never leaves the server.
+Tapping one opens the right conversation (or the Team screen for trades and waivers). A browser tab that is open and in front doesn't also pop a banner.
+
+**Browsers (Web Push)** — one-time setup:
+1. `node api/scripts/make-vapid.mjs mailto:you@example.com` prints a key pair.
+2. Put the two `[vars]` lines it shows into `api/wrangler.toml`, and store the private key with `npx wrangler secret put VAPID_PRIVATE_KEY`.
+3. `npx wrangler deploy`. Then each person opens *Team settings → Notifications* and turns **This device** on (the browser asks permission once).
+On an iPhone or iPad the site must first be added to the Home Screen (Share → Add to Home Screen) and opened from there. Chrome, Edge, Firefox and Safari 16.4+ otherwise just work.
+Never reuse or change the VAPID private key casually: changing it silently stops every existing browser subscription.
+
+**Phone apps (Expo push)**: needs a development or production build (not Expo Go) and an EAS project id in `app/app.json` under `expo.extra.eas.projectId` (`npx eas init` adds it).
+The app registers its Expo token with the server, and the server sends through Expo's free push service. **Not run on a device.**
+
+Housekeeping: a device whose browser says it has unsubscribed (HTTP 404/410), or whose Expo token is rejected, is removed automatically; one that keeps failing is dropped after 8 failures in a row.
+A person can have up to 10 devices; a device belongs to whoever signed in on it last. Notification text is truncated to a lock-screen length. `PUSH_ALLOW_LOCAL` and `EXPO_PUSH_URL` exist only for the tests.
+
 ## Matchups, standings and playoffs
 
 The commissioner opens **League** and enters the Monday week 1 starts; that creates 26 Monday–Sunday weeks and a
@@ -234,7 +258,7 @@ direct messages, and turns gold with an **@** when someone mentioned your team.
 - **Typing indicators:** "Team is typing…" in the league room, or only to the other person in a DM; expires after 4 seconds; rate-limited on the server.
 - **Reactions, pinned announcement, moderation:** as before — the commissioner can pin/delete league-room messages; authors delete their own.
 
-Not built: threads beyond a single quoted reply, push notifications (the badge only updates while the app is open), searching players or anything outside chat.
+Not built: threads beyond a single quoted reply, searching players or anything outside chat.
 
 ## Team settings: logo and name
 
@@ -281,7 +305,7 @@ Notes: *Trending* is "hottest this week" by points, not "most added". Postseason
 Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code, roster / draft-state /
 commissioner sale + undo endpoints with server-side bid validation, live draft broadcast (Durable Object WebSocket),
 the TV draft board, the phone draft companion, the keepers picker + season push, the schedule / standings / matchup /
-bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, group chats, read receipts, message search, replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, the live "on the block" nomination (the commissioner's DRAFT click puts the player, leader and bid on the TV board and every phone's NOW BIDDING strip; it clears on cancel, sale or a new hat draw, expires after 15 minutes, and late joiners get it on connect), the MLB stats feed (see its section), Google/Apple sign-in (see its section), archived-draft corrections (on a FINAL season's Draft Log the commissioner can change a price, change who drafted a player, or remove a sale; a team change also moves him on that team's frozen roster, the $300 budget and roster-room rules still apply, and keeper sales and players kept into a later season are locked), and the app's login, My Team, League, and theme switcher
+bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, group chats, read receipts, message search, push notifications (see its section), replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, the live "on the block" nomination (the commissioner's DRAFT click puts the player, leader and bid on the TV board and every phone's NOW BIDDING strip; it clears on cancel, sale or a new hat draw, expires after 15 minutes, and late joiners get it on connect), the MLB stats feed (see its section), Google/Apple sign-in (see its section), archived-draft corrections (on a FINAL season's Draft Log the commissioner can change a price, change who drafted a player, or remove a sale; a team change also moves him on that team's frozen roster, the $300 budget and roster-room rules still apply, and keeper sales and players kept into a later season are locked), and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
-Next: push notifications.
+Nothing is queued; the remaining ideas are career stats, 15/60-day IL types, and a commissioner screen for league settings.

@@ -6,6 +6,7 @@ import { api } from '../src/api';
 import { CropModal } from '../src/CropModal';
 import { cropToSquare, pickImage, type Picked } from '../src/images';
 import { useAuth } from '../src/auth';
+import { NotificationsCard } from '../src/NotificationsCard';
 import { RequireAuth } from '../src/RequireAuth';
 import { TeamAvatar } from '../src/TeamAvatar';
 import { FONT, useTheme } from '../src/theme';
@@ -75,6 +76,7 @@ function Settings() {
         </Pressable>
       </Card>
 
+      <NotificationsCard />
       {me?.user.isCommissioner && (
         <Pressable onPress={() => router.push('/stats-feed')} style={{ borderColor: t.line, borderWidth: 1, borderRadius: t.radius.button, padding: 14, marginBottom: 12 }}>
           <Display style={{ fontSize: 15 }}>MLB stats feed ›</Display>

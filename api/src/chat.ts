@@ -1,8 +1,9 @@
 import type { Hono } from 'hono';
-import { MAX_GROUP, cleanGroupName, cleanQuery, likePattern, memberKey, parseMentions, validateGroup } from '@pennant/domain';
+import { MAX_GROUP, cleanGroupName, groupTitle, cleanQuery, likePattern, memberKey, parseMentions, validateGroup } from '@pennant/domain';
 import { requireAuth, requireCommissioner } from './auth';
 import type { ChatMessage } from './draft-room';
 import { broadcast } from './realtime';
+import { later, notifyTeams, snippet } from './push';
 import { sniffImage } from './teams';
 import type { AppVars, Env } from './types';
 
@@ -50,6 +51,21 @@ async function canSee(env: Env, m: Scoped, team: string | null): Promise<boolean
     return !!mem && m.id > mem.f;
   }
   return !m.toTeam || m.teamId === team || m.toTeam === team;
+}
+/** Push: tell the people a new message is for (a DM's other team, a group's other members, or @mentioned teams). */
+async function pushForMessage(env: Env, m: ChatMessage) {
+  const names = new Map((await env.DB.prepare('SELECT id, name FROM team').all<{ id: string; name: string }>()).results.map((t) => [t.id, t.name]));
+  const from = names.get(m.teamId) ?? m.teamId;
+  const text = snippet(m.body, !!m.imageKey);
+  if (m.groupId) {
+    const info = await env.DB.prepare('SELECT name FROM chat_group WHERE id = ?').bind(m.groupId).first<{ name: string | null }>();
+    const members = (await groupMembers(env, m.groupId)).filter((t) => t !== m.teamId);
+    await notifyTeams(env, members, { kind: 'group', title: groupTitle(info?.name, [from, ...members.map((t) => names.get(t) ?? t)].slice(0, 3)), body: `${from}: ${text}`, url: `/?chat=group:${m.groupId}`, tag: `group-${m.groupId}` });
+  } else if (m.toTeam) {
+    await notifyTeams(env, [m.toTeam], { kind: 'dm', title: from, body: text, url: `/?chat=dm:${m.teamId}`, tag: `dm-${m.teamId}` });
+  } else if (m.mentions.length) {
+    await notifyTeams(env, m.mentions.filter((t) => t !== m.teamId), { kind: 'mention', title: `${from} mentioned you`, body: text, url: '/?chat=league', tag: 'league' });
+  }
 }
 const isPrivate = (m: Pick<ChatMessage, 'toTeam' | 'groupId'>) => !!m.toTeam || !!m.groupId;
 /** Keeps the realtime room's copy of a group's members current (it uses it to route typing signals). */
@@ -443,6 +459,7 @@ export function registerChat(app: App) {
     const res = await c.env.DB.batch(stmts);
     const message = (await one(c.env, Number(res[0].meta.last_row_id)))!;
     await broadcast(c.env, { type: 'chat', message }, await audience(c.env, message));
+    later(c, pushForMessage(c.env, message));
     return c.json(message, 201);
   });
 

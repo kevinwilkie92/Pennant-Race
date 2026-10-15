@@ -7,8 +7,19 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "icon": "./assets/logo.png",
-    "plugins": ["expo-router", "expo-secure-store", "expo-font"],
-    "web": { "bundler": "metro", "output": "single", "favicon": "./assets/logo.png" },
-    "experiments": { "typedRoutes": false }
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      "expo-notifications"
+    ],
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/logo.png"
+    },
+    "experiments": {
+      "typedRoutes": false
+    }
   }
 }

@@ -2,10 +2,12 @@ import type { Context, Hono } from 'hono';
 import { ROSTER_SIZE, canFillSlot, countsAgainstRoster, isILSlot, placePlayer } from '@pennant/domain';
 import { requireAuth } from './auth';
 import { dropStmts, historyStmts } from './players';
+import { later, notifyTeams } from './push';
 import { activeCount, loadRoster, materializeStmts, type RosterEntry } from './roster';
 import { isoNow, leagueToday } from './time';
 import type { AppVars, Env } from './types';
 
+const teamNames = async (env: Env) => new Map((await env.DB.prepare('SELECT id, name FROM team').all<{ id: string; name: string }>()).results.map((t) => [t.id, t.name]));
 type App = Hono<{ Bindings: Env; Variables: AppVars }>;
 const MAX_PER_SIDE = 5;
 
@@ -167,6 +169,7 @@ export function registerTrades(app: App) {
     if (err) return c.json({ error: err }, err.includes('game has started') ? 409 : 400);
     const r = await c.env.DB.prepare('INSERT INTO trade_offer (season, from_team, to_team, give_json, get_json, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
       .bind(yr, u.teamId, b.toTeam, JSON.stringify(b.give), JSON.stringify(b.get), 'pending', Date.now()).run();
+    later(c, teamNames(c.env).then((n) => notifyTeams(c.env, [b.toTeam], { kind: 'trade', title: `Trade offer from ${n.get(u.teamId!) ?? u.teamId}`, body: `They give ${b.give.length} player${b.give.length === 1 ? '' : 's'} and want ${b.get.length}`, url: '/team', tag: 'trade' })));
     return c.json({ id: r.meta.last_row_id }, 201);
   });
 
@@ -186,6 +189,7 @@ export function registerTrades(app: App) {
     const err = await checkTrade(c.env, o.season, o.fromTeam, o.toTeam, o.give, o.get);
     if (err) return c.json({ error: err }, err.includes('game has started') ? 409 : 400);
     const bad = await executeTrade(c.env, o);
+    if (!bad) later(c, teamNames(c.env).then((n) => notifyTeams(c.env, [o.fromTeam], { kind: 'trade', title: `${n.get(o.toTeam) ?? o.toTeam} accepted your trade`, body: 'The players have moved.', url: '/team', tag: 'trade' })));
     return bad ? c.json({ error: bad }, 400) : c.json({ ok: true });
   });
 
@@ -197,6 +201,13 @@ export function registerTrades(app: App) {
       if (!who(u, o)) return c.json({ error: denied }, 403);
       if (o.status !== 'pending') return c.json({ error: `That offer was already ${o.status}` }, 409);
       await c.env.DB.prepare('UPDATE trade_offer SET status = ?, resolved_at = ? WHERE id = ?').bind(status, Date.now(), o.id).run();
+      // Tell the other side: the proposer hears about a rejection; the recipient hears about a withdrawal (and both about a veto).
+      const targets = status === 'rejected' ? [o.fromTeam] : u.teamId === o.fromTeam ? [o.toTeam] : [o.fromTeam, o.toTeam].filter((t) => t !== u.teamId);
+      later(c, teamNames(c.env).then((n) => notifyTeams(c.env, targets, {
+        kind: 'trade', url: '/team', tag: 'trade',
+        title: status === 'rejected' ? `${n.get(o.toTeam) ?? o.toTeam} declined your trade` : u.teamId === o.fromTeam ? `${n.get(o.fromTeam) ?? o.fromTeam} withdrew a trade offer` : 'A trade offer was cancelled by the commissioner',
+        body: status === 'rejected' ? 'Tap to see your offers.' : 'It is no longer pending.',
+      })));
       return c.json({ ok: true });
     };
   app.post('/trades/:id/reject', requireAuth, resolve('rejected', (u, o) => u.teamId === o.toTeam, 'Only the team receiving the offer can reject it'));

@@ -1,5 +1,6 @@
 import type { Hono } from 'hono';
 import { INJURY_STATUSES, ROSTER_SIZE, canFillSlot, countsAgainstRoster, isILSlot, placePlayer, resolveWaivers, type Claim } from '@pennant/domain';
+import { notifyTeams } from './push';
 import { playerStats } from './stats';
 import { requireAuth, requireCommissioner } from './auth';
 import { lineupAt } from './lineup';
@@ -121,6 +122,13 @@ export async function processWaivers(env: Env, asOf?: string): Promise<ProcessRe
   }
   for (const [id, pos] of Object.entries(waiverPos)) stmts.push(db.prepare('UPDATE team SET waiver_pos = ? WHERE id = ?').bind(pos, id));
   await db.batch(stmts);
+  // Tell each team how its claims turned out (one notification per claim; failures here never undo the results).
+  for (const o of outcomes) {
+    const who = info.get(o.addId)?.name ?? 'a player';
+    await notifyTeams(env, [o.teamId], o.won
+      ? { kind: 'waiver', title: `Waiver claim won: ${who}`, body: o.bid ? `You paid $${o.bid} FAAB.` : 'No FAAB spent.', url: '/team', tag: `claim-${o.claimId}` }
+      : { kind: 'waiver', title: `Waiver claim failed: ${who}`, body: o.reason ?? 'Another team had priority.', url: '/team', tag: `claim-${o.claimId}` }).catch(() => 0);
+  }
   return { season: yr, won: outcomes.filter((o) => o.won).length, failed: outcomes.filter((o) => !o.won).length, deferred };
 }
 
