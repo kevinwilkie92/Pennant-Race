@@ -9,6 +9,7 @@ import {
 import type { AppVars, Env } from './types';
 import { broadcast, room } from './realtime';
 import type { Nomination } from './draft-room';
+import { registerDraftEdit } from './draft-edit';
 import { registerLeague } from './league';
 import { registerChat } from './chat';
 import { registerLineup } from './lineup';
@@ -381,6 +382,7 @@ async function liveSeason(env: Env): Promise<number | null> {
   return row?.year ?? null;
 }
 
+registerDraftEdit(app);
 registerLeague(app);
 registerLineup(app);
 registerPlayers(app);

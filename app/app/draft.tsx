@@ -65,7 +65,7 @@ function DraftRoom({ commissioner, myTeamId }: { commissioner: boolean; myTeamId
             <Keepers season={d.season} teams={d.teams} managers={d.state?.managers ?? []} version={d.state}
               commissioner={commissioner} myTeamId={myTeamId} onError={say} />
           )}
-          {tab === 'log' && <Log sales={d.state?.sales ?? []} teams={d.teams} />}
+          {tab === 'log' && <Log sales={d.state?.sales ?? []} teams={d.teams} season={d.season} canEdit={commissioner && !isLive && d.season != null} onChanged={() => { d.refresh(); }} />}
         </View>
         {tab === 'board' && (
           <Money managers={d.state?.managers ?? []} teams={d.teams} onPick={(id) => { setFocus(id); setTab('rosters'); }} />

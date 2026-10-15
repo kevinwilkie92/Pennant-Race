@@ -124,6 +124,9 @@ export const api = {
     call<{ nomination: Nomination }>('/draft/nomination', { method: 'PUT', body: JSON.stringify({ playerId, teamId: teamId ?? null, bid: bid ?? null }) }),
   clearNomination: () => call<{ ok: true }>('/draft/nomination', { method: 'DELETE' }),
   undo: () => call<{ ok: true }>('/draft/sales/last', { method: 'DELETE' }),
+  editSale: (season: number, playerId: number, b: { price?: number; teamId?: string }) =>
+    call<{ ok: true }>(`/draft/archive/${season}/sales/${playerId}`, { method: 'PATCH', body: JSON.stringify(b) }),
+  removeSale: (season: number, playerId: number) => call<{ ok: true }>(`/draft/archive/${season}/sales/${playerId}`, { method: 'DELETE' }),
   setHat: (mlbTeam: string | null) => call<{ ok: true }>('/draft/hat', { method: 'POST', body: JSON.stringify({ mlbTeam }) }),
   lineup: (teamId: string, date?: string) =>
     call<{ season: number | null; date: string | null; today: string; editable: boolean; total: number; slots: LineupSlot[] }>(
