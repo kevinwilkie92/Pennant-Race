@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
-import { api, type Claim, type LineupSlot, type Txn } from './api';
+import { api, type Claim, type LineupSlot, type TradeOffer, type Txn } from './api';
 import { FONT, useTheme } from './theme';
 import { Body, Card, Display } from './ui';
 
@@ -9,7 +9,14 @@ export const describeTxn = (x: Txn, teamName: (id: string) => string) =>
   x.type === 'waiver' ? `${teamName(x.teamId)} added ${x.player} ($${x.faab ?? 0})`
     : x.type === 'drop' ? `${teamName(x.teamId)} dropped ${x.player}`
     : x.type === 'add' ? `${teamName(x.teamId)} added ${x.player}`
-    : x.type === 'trade' ? `${teamName(x.teamId)} traded ${x.player ?? ''}` : `${teamName(x.teamId)} drafted ${x.player}`;
+    : x.type === 'trade' ? tradeLine(x, teamName) : `${teamName(x.teamId)} drafted ${x.player}`;
+
+function tradeLine(x: Txn, teamName: (id: string) => string) {
+  try {
+    const d = JSON.parse(x.detail ?? '{}') as { to?: string; give?: string[]; get?: string[] };
+    return `${teamName(x.teamId)} traded ${(d.give ?? []).join(', ')} to ${teamName(d.to ?? '?')} for ${(d.get ?? []).join(', ')}`;
+  } catch { return `${teamName(x.teamId)} made a trade`; }
+}
 
 /** My Team → Transactions: pending waiver claims (editable bid / drop / priority) and recent results. */
 export function Transactions({ teamId, commissioner, teamName }: { teamId: string; commissioner: boolean; teamName: (id: string) => string }) {
@@ -18,9 +25,11 @@ export function Transactions({ teamId, commissioner, teamName }: { teamId: strin
   const [log, setLog] = useState<Txn[]>([]);
   const [roster, setRoster] = useState<LineupSlot[]>([]);
   const [picking, setPicking] = useState<Claim | null>(null);
+  const [trades, setTrades] = useState<Awaited<ReturnType<typeof api.trades>> | null>(null);
 
   const load = useCallback(() => {
     api.claims().then(setData).catch(() => {});
+    api.trades().then(setTrades).catch(() => {});
     api.transactions(teamId).then(setLog).catch(() => {});
     api.lineup(teamId).then((l) => setRoster(l.slots)).catch(() => {});
   }, [teamId]);
@@ -42,6 +51,16 @@ export function Transactions({ teamId, commissioner, teamName }: { teamId: strin
           </Pressable>
         )}
       </Card>
+
+      {trades && (trades.received.length > 0 || trades.sent.length > 0) && (
+        <>
+          <Display style={{ fontSize: 13, letterSpacing: 1.5, color: t.dim, marginBottom: 6, marginLeft: 4 }}>TRADE OFFERS</Display>
+          {[...trades.received.map((o) => ({ o, mine: false })), ...trades.sent.map((o) => ({ o, mine: true }))].map(({ o, mine }) => (
+            <OfferCard key={o.id} o={o} mine={mine} teamName={teamName}
+              onAccept={() => act(() => api.acceptTrade(o.id))} onReject={() => act(() => api.rejectTrade(o.id))} onCancel={() => act(() => api.cancelTrade(o.id))} />
+          ))}
+        </>
+      )}
 
       <Display style={{ fontSize: 13, letterSpacing: 1.5, color: t.dim, marginBottom: 6, marginLeft: 4 }}>PENDING CLAIMS</Display>
       {data.pending.length === 0 ? (
@@ -88,6 +107,24 @@ export function Transactions({ teamId, commissioner, teamName }: { teamId: strin
         </>
       )}
 
+      {trades && trades.history.length > 0 && (
+        <>
+          <Display style={{ fontSize: 13, letterSpacing: 1.5, color: t.dim, margin: 4, marginTop: 10 }}>PAST TRADES</Display>
+          <Card style={{ overflow: 'hidden', marginBottom: 12 }}>
+            {trades.history.map((o, i) => (
+              <View key={o.id} style={{ padding: 10, borderTopWidth: i ? 1 : 0, borderTopColor: t.line }}>
+                <Body style={{ fontSize: 13 }}>
+                  {teamName(o.fromTeam)} → {teamName(o.toTeam)}: {o.give.map((p) => p.name).join(', ')} for {o.get.map((p) => p.name).join(', ')}
+                </Body>
+                <Body style={{ fontSize: 12, color: o.status === 'accepted' ? t.green : t.dim }}>
+                  {o.status === 'accepted' ? 'Accepted' : o.status === 'rejected' ? 'Rejected' : `Cancelled${o.reason ? ` — ${o.reason}` : ''}`}
+                </Body>
+              </View>
+            ))}
+          </Card>
+        </>
+      )}
+
       <Display style={{ fontSize: 13, letterSpacing: 1.5, color: t.dim, margin: 4, marginTop: 10 }}>TEAM ACTIVITY</Display>
       <Card style={{ overflow: 'hidden' }}>
         {log.length === 0 && <Body style={{ color: t.dim, padding: 12 }}>No transactions yet.</Body>}
@@ -119,5 +156,35 @@ export function Transactions({ teamId, commissioner, teamName }: { teamId: strin
         </Pressable>
       </Modal>
     </View>
+  );
+}
+
+function OfferCard({ o, mine, teamName, onAccept, onReject, onCancel }: {
+  o: TradeOffer; mine: boolean; teamName: (id: string) => string; onAccept: () => void; onReject: () => void; onCancel: () => void;
+}) {
+  const { t } = useTheme();
+  const names = (ps: TradeOffer['give']) => ps.map((p) => p.name).join(', ');
+  const btn = (label: string, onPress: () => void, color: string, disabled = false) => (
+    <Pressable onPress={onPress} disabled={disabled} style={{ borderColor: color, borderWidth: 1, borderRadius: t.radius.chip, paddingHorizontal: 14, paddingVertical: 8, opacity: disabled ? 0.4 : 1 }}>
+      <Display style={{ fontSize: 13, color }}>{label}</Display>
+    </Pressable>
+  );
+  return (
+    <Card style={{ padding: 12, marginBottom: 8 }}>
+      <Body style={{ color: t.dim, fontSize: 11, fontFamily: FONT.bodyBold, letterSpacing: 1 }}>
+        {mine ? `SENT TO ${teamName(o.toTeam).toUpperCase()}` : `FROM ${teamName(o.fromTeam).toUpperCase()}`}
+      </Body>
+      <Body style={{ marginTop: 4, fontSize: 14 }}><Body style={{ color: t.dim, fontSize: 14 }}>{mine ? 'You give: ' : 'They give: '}</Body>{names(o.give)}</Body>
+      <Body style={{ marginTop: 2, fontSize: 14 }}><Body style={{ color: t.dim, fontSize: 14 }}>{mine ? 'You get: ' : 'You give: '}</Body>{names(o.get)}</Body>
+      {o.problem && <Body style={{ color: t.loss, fontSize: 12, marginTop: 6 }}>⚠ {o.problem}</Body>}
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+        {mine ? btn('CANCEL OFFER', onCancel, t.loss) : (
+          <>
+            {btn('ACCEPT', onAccept, t.green, !!o.problem)}
+            {btn('REJECT', onReject, t.loss)}
+          </>
+        )}
+      </View>
+    </Card>
   );
 }

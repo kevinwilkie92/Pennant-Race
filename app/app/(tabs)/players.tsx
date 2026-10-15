@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { api, type PoolPlayer } from '../../src/api';
 import { AddSheet } from '../../src/AddSheet';
 import { useAuth } from '../../src/auth';
@@ -16,6 +17,7 @@ const colorFor = (pos: string) => (pos === 'SP' ? POS_COLOR.SP : pos === 'RP' ? 
 export default function Players() {
   const { t } = useTheme();
   const { me } = useAuth();
+  const router = useRouter();
   const [sub, setSub] = useState<Sub>('available');
   const [q, setQ] = useState('');
   const [pos, setPos] = useState('ALL');
@@ -108,7 +110,12 @@ export default function Players() {
                       <Body style={{ color: t.dim, fontSize: 12 }}>{p.mlbTeam ?? 'FA'} · {p.positions.join(',')}</Body>
                     </View>
                     {p.ownerId ? (
-                      <Body style={{ color: t.dim, fontSize: 11, fontFamily: FONT.bodyBold }}>{p.ownerId === me?.user.teamId ? 'YOURS' : p.ownerId}</Body>
+                      p.ownerId === me?.user.teamId ? <Body style={{ color: t.dim, fontSize: 11, fontFamily: FONT.bodyBold }}>YOURS</Body> : (
+                        <Pressable onPress={() => router.push({ pathname: '/trade', params: { team: p.ownerId!, player: String(p.id) } })}
+                          style={{ borderColor: t.red, borderWidth: 1, borderRadius: t.radius.chip, paddingHorizontal: 10, paddingVertical: 6 }}>
+                          <Display style={{ fontSize: 12, color: t.red }}>TRADE · {p.ownerId}</Display>
+                        </Pressable>
+                      )
                     ) : (
                       <Pressable onPress={() => setAdding(p)} style={{ backgroundColor: t.red, borderRadius: t.radius.chip, paddingHorizontal: 12, paddingVertical: 7 }}>
                         <Display style={{ fontSize: 13, color: '#fff' }}>+ ADD</Display>

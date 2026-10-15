@@ -112,7 +112,7 @@ To preview a finished season in the app, build with `EXPO_PUBLIC_AS_OF=2027-10-0
 - Under the hood: `lineup_history` (one row per slot change with its effective date) lets the feed credit each day's points
   to the slot the player held that day. Not built: "Optimize" (needs projections), lineup views for other teams.
 
-Run `npm run test:e2e` to run every end-to-end suite (keepers, league, lineup, waivers) against a fresh local database; no network needed.
+Run `npm run test:e2e` to run every end-to-end suite (keepers, league, lineup, waivers, trades) against a fresh local database; no network needed.
 
 ## Players, waivers and FAAB
 
@@ -134,7 +134,24 @@ sortable by player / position / team. **+ ADD** opens a claim: a FAAB bid ($0 al
   Past days keep showing the lineup as it was (new players don't appear before they were added).
 - FAAB resets to $300 and pending claims are cancelled when you push to a new season.
 
-Not built yet: trades (Propose / Accept / Reject / Cancel), a waiver-period after drops, injured list, player cards with stats.
+## Trades
+
+**Propose:** My Team → **Trade**, or tap a player on another team's roster (League → a team), or **TRADE** next to an owned player in the
+Players tab's watchlist — the partner and player come pre-selected. Tick what you give and what you want (up to 5 per side), send.
+**Respond:** My Team → **Transactions → Trade offers**: the receiving manager **Accept**s or **Reject**s; the sender can **Cancel**.
+Past trades show under *Past trades* and in **League → Activity**.
+
+**Rules** (the README only lists Accept / Reject / Cancel — these are my defaults):
+- An accepted trade takes effect immediately; there is no commissioner approval or review period. The commissioner can **cancel** any pending offer (a veto).
+- Offers are re-checked when accepted. They can't go through if a player is no longer where the offer says, either roster would exceed 26,
+  or a player's MLB game has already started today (same lock as lineups and drops). The pending list shows the reason.
+- Accepting cancels any other pending offer that includes one of the traded players.
+- Incoming players take a traded-away player's slot when he fits, otherwise the smallest set of players shift to make a legal lineup.
+  Past days keep showing each lineup as it was.
+- A pending waiver claim that planned to drop a traded-away player loses that drop.
+- No trade deadline, counter-offers, or multi-team trades.
+
+Not built yet: a waiver-period after drops, injured list, player cards with stats.
 
 ## Stats feed — NOT connected yet
 
@@ -156,8 +173,8 @@ The feed also needs to fill `mlb_game` (first-pitch times, for the lineup lock) 
 Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code, roster / draft-state /
 commissioner sale + undo endpoints with server-side bid validation, live draft broadcast (Durable Object WebSocket),
 the TV draft board, the phone draft companion, the keepers picker + season push, the schedule / standings / matchup /
-bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, and the app's login, My Team, League, and theme switcher
+bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
-Next, roughly in order: connect the stats feed (above), trades, chat, editing archived draft results, team logo upload (R2), Google/Apple sign-in, and a
+Next, roughly in order: connect the stats feed (above), chat, editing archived draft results, team logo upload (R2), Google/Apple sign-in, and a
 "currently nominated player" strip for the phone companion.

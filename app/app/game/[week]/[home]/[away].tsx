@@ -7,9 +7,10 @@ import { MatchupView } from '../../../../src/MatchupView';
 import { useLeague } from '../../../../src/useLeague';
 import { useTheme } from '../../../../src/theme';
 import { Body } from '../../../../src/ui';
+import { RequireAuth } from '../../../../src/RequireAuth';
 
 // Any league matchup, rendered exactly like the Matchup tab.
-export default function Game() {
+function GameInner() {
   const p = useLocalSearchParams<{ week: string; home: string; away: string }>();
   const { t } = useTheme();
   const router = useRouter();
@@ -32,5 +33,13 @@ export default function Game() {
         ? <MatchupView week={week} weeks={lg.weeks.filter((w) => w.week === week)} onWeek={setWeek} home={home} away={away} homeScore={scores.h} awayScore={scores.a} />
         : <ActivityIndicator color={t.red} style={{ marginTop: 40 }} />}
     </View>
+  );
+}
+
+export default function Game() {
+  return (
+    <RequireAuth>
+      <GameInner />
+    </RequireAuth>
   );
 }

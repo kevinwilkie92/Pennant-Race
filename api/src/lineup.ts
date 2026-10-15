@@ -121,7 +121,7 @@ export function registerLineup(app: App) {
         stmts.push(db.prepare('INSERT INTO lineup_history (season, team_id, player_id, slot, from_date) VALUES (?, ?, ?, ?, ?)').bind(s.year, teamId, ch.e.playerId, was.get(ch.e.playerId)!, BASELINE));
       }
       stmts.push(
-        db.prepare('INSERT INTO lineup_history (season, team_id, player_id, slot, from_date) VALUES (?, ?, ?, ?, ?) ON CONFLICT(season, player_id, from_date) DO UPDATE SET slot = excluded.slot').bind(s.year, teamId, ch.e.playerId, ch.slot, date),
+        db.prepare('INSERT INTO lineup_history (season, team_id, player_id, slot, from_date) VALUES (?, ?, ?, ?, ?) ON CONFLICT(season, team_id, player_id, from_date) DO UPDATE SET slot = excluded.slot').bind(s.year, teamId, ch.e.playerId, ch.slot, date),
       );
     }
     if (date === today) {

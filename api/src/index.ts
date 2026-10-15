@@ -11,6 +11,7 @@ import type { DraftEvent } from './draft-room';
 import { registerLeague } from './league';
 import { registerLineup } from './lineup';
 import { processWaivers, registerPlayers } from './players';
+import { registerTrades } from './trades';
 import { loadRoster } from './roster';
 
 export { DraftRoom } from './draft-room';
@@ -335,6 +336,7 @@ async function liveSeason(env: Env): Promise<number | null> {
 registerLeague(app);
 registerLineup(app);
 registerPlayers(app);
+registerTrades(app);
 
 // `fetch` serves the API; `scheduled` runs the nightly waiver processing (see wrangler.toml [triggers]).
 export default {

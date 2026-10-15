@@ -4,6 +4,7 @@ import { ROSTER_LABELS, canFillSlot } from '@pennant/domain';
 import { api, type LineupSlot } from '../../src/api';
 import { useAuth } from '../../src/auth';
 import { Lineup } from '../../src/Lineup';
+import { TradeComposer } from '../../src/TradeComposer';
 import { Transactions } from '../../src/Transactions';
 import { useLeague } from '../../src/useLeague';
 import { fmtPts } from '../../src/useLeague';
@@ -21,7 +22,7 @@ export default function MyTeam() {
   const [data, setData] = useState<Awaited<ReturnType<typeof api.lineup>> | null>(null);
   const [err, setErr] = useState('');
   const [sel, setSel] = useState<LineupSlot | null>(null);
-  const [sub, setSub] = useState<'lineup' | 'transactions'>('lineup');
+  const [sub, setSub] = useState<'lineup' | 'trade' | 'transactions'>('lineup');
   const lg = useLeague();
 
   const load = useCallback(() => {
@@ -62,7 +63,7 @@ export default function MyTeam() {
       </Card>
 
       <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
-        {([['lineup', 'Lineup'], ['transactions', 'Transactions']] as const).map(([k, label]) => {
+        {([['lineup', 'Lineup'], ['trade', 'Trade'], ['transactions', 'Transactions']] as const).map(([k, label]) => {
           const on = sub === k;
           return (
             <Pressable key={k} onPress={() => setSub(k)} style={{ paddingHorizontal: 16, paddingVertical: 7, borderRadius: t.radius.chip, borderWidth: 1, borderColor: on ? t.red : t.line, backgroundColor: on ? t.red : 'transparent' }}>
@@ -71,6 +72,8 @@ export default function MyTeam() {
           );
         })}
       </View>
+
+      {sub === 'trade' && <TradeComposer myTeamId={team.id} teams={lg.teams} onSent={() => { setSub('transactions'); }} />}
 
       {sub === 'transactions' && <Transactions teamId={team.id} commissioner={!!me?.user.isCommissioner} teamName={(id) => lg.byId.get(id)?.name ?? id} />}
 

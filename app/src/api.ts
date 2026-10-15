@@ -72,7 +72,13 @@ export type Claim = {
   id: number; teamId: string; addId: number; dropId: number | null; bid: number; priority: number; status: string;
   reason: string | null; addName?: string; dropName?: string | null; processedAt: number | null;
 };
-export type Txn = { id: number; type: 'draft' | 'waiver' | 'trade' | 'add' | 'drop'; teamId: string; faab: number | null; at: number; player: string | null };
+export type Txn = { id: number; type: 'draft' | 'waiver' | 'trade' | 'add' | 'drop'; teamId: string; faab: number | null; at: number; player: string | null; detail?: string | null };
+
+export type TradePlayer = { id: number; name: string; mlbTeam: string | null; positions: string[] };
+export type TradeOffer = {
+  id: number; fromTeam: string; toTeam: string; give: TradePlayer[]; get: TradePlayer[]; status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
+  reason: string | null; createdAt: number; resolvedAt: number | null; problem: string | null;
+};
 
 export const api = {
   login: (email: string, password: string) =>
@@ -124,6 +130,11 @@ export const api = {
   processWaivers: () => call<{ won: number; failed: number }>('/waivers/process', { method: 'POST' }),
   dropPlayer: (playerId: number) => call<{ ok: true }>('/roster/drop', { method: 'POST', body: JSON.stringify({ playerId }) }),
   transactions: (teamId?: string) => call<Txn[]>(`/transactions?limit=60${teamId ? `&teamId=${teamId}` : ''}`),
+  trades: () => call<{ season: number | null; sent: TradeOffer[]; received: TradeOffer[]; history: TradeOffer[] }>('/trades'),
+  proposeTrade: (b: { toTeam: string; give: number[]; get: number[] }) => call<{ id: number }>('/trades', { method: 'POST', body: JSON.stringify(b) }),
+  acceptTrade: (id: number) => call<{ ok: true }>(`/trades/${id}/accept`, { method: 'POST' }),
+  rejectTrade: (id: number) => call<{ ok: true }>(`/trades/${id}/reject`, { method: 'POST' }),
+  cancelTrade: (id: number) => call<{ ok: true }>(`/trades/${id}/cancel`, { method: 'POST' }),
   weeks: () => call<{ season: number | null; current: number | null; weeks: WeekInfo[] }>(`/weeks?x=1${AS_OF}`),
   matchups: (week: number) => call<MatchupRow[]>(`/matchups?week=${week}${AS_OF}`),
   standings: () => call<{ season: number | null; playoffTeams: number; rows: StandingRow[] }>(`/standings?x=1${AS_OF}`),

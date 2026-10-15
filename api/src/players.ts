@@ -89,7 +89,7 @@ export async function processWaivers(env: Env): Promise<ProcessResult | null> {
     addedNow.add(o.addId);
     stmts.push(
       db.prepare('INSERT INTO roster_slot (season, team_id, player_id, slot) VALUES (?, ?, ?, ?)').bind(yr, o.teamId, o.addId, slot),
-      db.prepare('INSERT INTO lineup_history (season, team_id, player_id, slot, from_date) VALUES (?, ?, ?, ?, ?) ON CONFLICT(season, player_id, from_date) DO UPDATE SET slot = excluded.slot').bind(yr, o.teamId, o.addId, slot, today),
+      db.prepare('INSERT INTO lineup_history (season, team_id, player_id, slot, from_date) VALUES (?, ?, ?, ?, ?) ON CONFLICT(season, team_id, player_id, from_date) DO UPDATE SET slot = excluded.slot').bind(yr, o.teamId, o.addId, slot, today),
       db.prepare('UPDATE team SET faab = faab - ? WHERE id = ?').bind(o.bid, o.teamId),
       db.prepare("INSERT INTO \"transaction\" (season, type, team_id, player_id, faab, status, created_at) VALUES (?, 'waiver', ?, ?, ?, 'done', ?)").bind(yr, o.teamId, o.addId, o.bid, now),
       db.prepare("UPDATE waiver_claim SET status = 'won', processed_at = ? WHERE id = ?").bind(now, o.claimId),
@@ -104,16 +104,16 @@ export async function processWaivers(env: Env): Promise<ProcessResult | null> {
  * History rows for a slot change effective `date`. A baseline row (the slot before any edit) is added only for
  * players who have been on the team all along — never for someone added mid-season or earlier in this same run.
  */
-async function historyStmts(env: Env, yr: number, teamId: string, playerId: number, oldSlot: string, newSlot: string, date: string, addedNow: Set<number>): Promise<D1PreparedStatement[]> {
+export async function historyStmts(env: Env, yr: number, teamId: string, playerId: number, oldSlot: string, newSlot: string, date: string, addedNow: Set<number>): Promise<D1PreparedStatement[]> {
   const had = addedNow.has(playerId) || await env.DB.prepare('SELECT 1 FROM lineup_history WHERE season = ? AND team_id = ? AND player_id = ? LIMIT 1').bind(yr, teamId, playerId).first();
   return [
     ...(had ? [] : [env.DB.prepare('INSERT OR IGNORE INTO lineup_history (season, team_id, player_id, slot, from_date) VALUES (?, ?, ?, ?, ?)').bind(yr, teamId, playerId, oldSlot, '0000-00-00')]),
-    env.DB.prepare('INSERT INTO lineup_history (season, team_id, player_id, slot, from_date) VALUES (?, ?, ?, ?, ?) ON CONFLICT(season, player_id, from_date) DO UPDATE SET slot = excluded.slot').bind(yr, teamId, playerId, newSlot, date),
+    env.DB.prepare('INSERT INTO lineup_history (season, team_id, player_id, slot, from_date) VALUES (?, ?, ?, ?, ?) ON CONFLICT(season, team_id, player_id, from_date) DO UPDATE SET slot = excluded.slot').bind(yr, teamId, playerId, newSlot, date),
   ];
 }
 
 /** Removes a player from a team's stored roster and records it in the lineup history. */
-async function dropStmts(env: Env, yr: number, teamId: string, p: RosterEntry, date: string): Promise<D1PreparedStatement[]> {
+export async function dropStmts(env: Env, yr: number, teamId: string, p: RosterEntry, date: string): Promise<D1PreparedStatement[]> {
   return [
     ...(await historyStmts(env, yr, teamId, p.playerId, p.slot, '', date, new Set())),
     env.DB.prepare('DELETE FROM roster_slot WHERE season = ? AND team_id = ? AND player_id = ?').bind(yr, teamId, p.playerId),
@@ -282,7 +282,7 @@ export function registerPlayers(app: App) {
     const teamId = c.req.query('teamId');
     const limit = Math.min(Number(c.req.query('limit') ?? 50), 200);
     const { results } = await c.env.DB.prepare(
-      `SELECT t.id, t.type, t.team_id AS teamId, t.faab, t.created_at AS at, p.name AS player
+      `SELECT t.id, t.type, t.team_id AS teamId, t.faab, t.created_at AS at, t.detail, p.name AS player
          FROM "transaction" t LEFT JOIN player p ON p.id = t.player_id
         WHERE t.season = ?1 AND (?2 IS NULL OR t.team_id = ?2) ORDER BY t.id DESC LIMIT ?3`,
     ).bind(yr, teamId ?? null, limit).all();
