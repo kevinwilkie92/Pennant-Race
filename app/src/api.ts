@@ -29,7 +29,10 @@ export type RosterSlot = {
   slot: string; playerId: number; name: string; mlbTeam: string | null; pos: string; pos2: string | null;
   positions: string[]; keeperYear: number | null; price: number | null; injury?: string | null;
 };
-export type Me = { user: { id: string; email: string; teamId: string | null; isCommissioner: boolean }; team: { id: string; name: string; color: string; owner_name: string; faab: number } | null };
+export type Me = { user: { id: string; email: string; teamId: string | null; isCommissioner: boolean }; team: { id: string; name: string; color: string; owner_name: string; faab: number; logo_key?: string | null } | null };
+
+/** Where a team's logo lives (the file name is random, so the URL changes whenever the logo does). */
+export const logoUrl = (key?: string | null) => (key ? `${API_URL}/logos/${key}` : null);
 
 export type DraftSale = {
   seq: number; playerId: number; name: string; teamId: string; price: number;
@@ -156,6 +159,16 @@ export const api = {
   chatReact: (id: number, emoji: string) => call<{ reactions: Record<string, string[]> }>(`/chat/${id}/react`, { method: 'POST', body: JSON.stringify({ emoji }) }),
   chatPin: (id: number, pinned: boolean) => call<{ pinned: ChatMessage | null }>(`/chat/${id}/pin`, { method: 'PUT', body: JSON.stringify({ pinned }) }),
   chatDelete: (id: number) => call<{ ok: true }>(`/chat/${id}`, { method: 'DELETE' }),
+  uploadLogo: async (teamId: string, image: Blob) => {
+    const res = await fetch(`${API_URL}/teams/${teamId}/logo`, {
+      method: 'PUT', headers: { 'content-type': image.type || 'application/octet-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: image,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(res.status, (body as { error?: string }).error ?? `Upload failed (${res.status})`);
+    return body as { logoKey: string };
+  },
+  removeLogo: (teamId: string) => call<{ logoKey: null }>(`/teams/${teamId}/logo`, { method: 'DELETE' }),
+  renameTeam: (teamId: string, name: string) => call<{ name: string }>(`/teams/${teamId}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
   weeks: () => call<{ season: number | null; current: number | null; weeks: WeekInfo[] }>(`/weeks?x=1${AS_OF}`),
   matchups: (week: number) => call<MatchupRow[]>(`/matchups?week=${week}${AS_OF}`),
   standings: () => call<{ season: number | null; playoffTeams: number; rows: StandingRow[] }>(`/standings?x=1${AS_OF}`),

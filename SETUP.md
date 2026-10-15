@@ -112,7 +112,7 @@ To preview a finished season in the app, build with `EXPO_PUBLIC_AS_OF=2027-10-0
 - Under the hood: `lineup_history` (one row per slot change with its effective date) lets the feed credit each day's points
   to the slot the player held that day. Not built: "Optimize" (needs projections), lineup views for other teams.
 
-Run `npm run test:e2e` to run every end-to-end suite (keepers, league, lineup, waivers, trades, extras, chat) against a fresh local database; no network needed.
+Run `npm run test:e2e` to run every end-to-end suite (keepers, league, lineup, waivers, trades, extras, chat, logos) against a fresh local database; no network needed.
 
 ## Players, waivers and FAAB
 
@@ -178,6 +178,16 @@ Tap 💬 in the header. Messages arrive live over the same WebSocket room the dr
 
 Not built: direct messages, replies/threads, @mentions, images, typing indicators, push notifications (the badge only updates while the app is open), edit-after-send.
 
+## Team settings: logo and name
+
+Tap the logo (⚙) on your My Team card → **Team settings**.
+- **Logo:** *Upload logo* picks a photo, centre-crops it to a square, shrinks it to 256px and uploads it (PNG, JPEG or WebP). *Remove* goes back to your team colour.
+  It shows on your team card, the standings, matchups, chat and the phone draft view, and updates live for everyone.
+- **Name:** 2–40 characters; another team's name (any capitalisation) is refused. The commissioner can edit any team.
+- **How it's stored:** in the R2 bucket from the deploy steps (`pennant-race-logos`). Files get random names (so the URL changes with every upload and can be cached for a year);
+  the old file is deleted on replace/remove. The server checks the file's real bytes — not its label — and rejects anything over 2 MB, SVG (can carry scripts), GIF and non-images.
+  Logos are served without sign-in (images can't send credentials) with `nosniff` and a sandboxing CSP.
+
 ## Stats feed — NOT connected yet
 
 Points come from the `daily_points` table (`season, date, team_id, player_id, slot, points`); everything above reads it.
@@ -198,8 +208,8 @@ The feed also needs to fill `mlb_game` (first-pitch times, for the lineup lock) 
 Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code, roster / draft-state /
 commissioner sale + undo endpoints with server-side bid validation, live draft broadcast (Durable Object WebSocket),
 the TV draft board, the phone draft companion, the keepers picker + season push, the schedule / standings / matchup /
-bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat, and the app's login, My Team, League, and theme switcher
+bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat, team logos and names, and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
-Next, roughly in order: connect the stats feed (above), editing archived draft results, team logo upload (R2), Google/Apple sign-in, and a
+Next, roughly in order: connect the stats feed (above), editing archived draft results, Google/Apple sign-in, and a
 "currently nominated player" strip for the phone companion.

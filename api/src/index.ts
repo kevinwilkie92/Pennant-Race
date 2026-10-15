@@ -12,6 +12,7 @@ import { registerLeague } from './league';
 import { registerChat } from './chat';
 import { registerLineup } from './lineup';
 import { processWaivers, registerPlayers } from './players';
+import { registerTeams } from './teams';
 import { registerTrades } from './trades';
 import { loadRoster } from './roster';
 
@@ -336,6 +337,7 @@ registerLineup(app);
 registerPlayers(app);
 registerTrades(app);
 registerChat(app);
+registerTeams(app);
 
 // `fetch` serves the API; `scheduled` runs the nightly waiver processing (see wrangler.toml [triggers]).
 export default {

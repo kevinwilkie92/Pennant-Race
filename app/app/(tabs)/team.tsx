@@ -6,7 +6,9 @@ import { api, type LineupSlot } from '../../src/api';
 import { useAuth } from '../../src/auth';
 import { Lineup } from '../../src/Lineup';
 import { TradeComposer } from '../../src/TradeComposer';
+import { TeamAvatar } from '../../src/TeamAvatar';
 import { Transactions } from '../../src/Transactions';
+import { useRouter } from 'expo-router';
 import { useLeague } from '../../src/useLeague';
 import { fmtPts } from '../../src/useLeague';
 import { FONT, useTheme } from '../../src/theme';
@@ -25,6 +27,7 @@ export default function MyTeam() {
   const [sel, setSel] = useState<LineupSlot | null>(null);
   const [sub, setSub] = useState<'lineup' | 'trade' | 'transactions'>('lineup');
   const [cardId, setCardId] = useState<number | null>(null);
+  const router = useRouter();
   const lg = useLeague();
 
   const load = useCallback(() => {
@@ -49,9 +52,12 @@ export default function MyTeam() {
   return (
     <ScrollView contentContainerStyle={{ padding: 16 }}>
       <Card style={{ padding: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: team.color, alignItems: 'center', justifyContent: 'center' }}>
-          <Display style={{ fontSize: 22, color: '#fff' }}>{team.id}</Display>
-        </View>
+        <Pressable onPress={() => router.push('/team-settings')} hitSlop={8} accessibilityLabel="Team settings">
+          <TeamAvatar id={team.id} color={team.color} logoKey={team.logo_key} size={54} />
+          <View style={{ position: 'absolute', right: -4, bottom: -4, width: 22, height: 22, borderRadius: 11, backgroundColor: t.panel, borderColor: t.line, borderWidth: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <Body style={{ fontSize: 12 }}>⚙</Body>
+          </View>
+        </Pressable>
         <View style={{ flex: 1 }}>
           <Display style={{ fontSize: 24 }} numberOfLines={1}>{team.name}</Display>
           <Body style={{ color: t.dim }}>{team.owner_name} · FAAB ${team.faab}</Body>

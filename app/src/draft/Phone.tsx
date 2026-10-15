@@ -3,6 +3,7 @@ import { Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'reac
 import { BUDGET, ROSTER_LABELS, ROSTER_SIZE } from '@pennant/domain';
 import type { DraftManager, DraftPlayer, DraftSale, MlbTeam, Team } from '../api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TeamAvatar } from '../TeamAvatar';
 import { FONT, useTheme, type Tokens } from '../theme';
 import { GROUPS, groupOf, type Group } from './useDraft';
 
@@ -102,7 +103,7 @@ export function Phone(p: PhoneProps) {
       {mine && myTeam && (
         <View style={[s.card, { flexDirection: 'row', alignItems: 'stretch', margin: 12, marginBottom: 0, overflow: 'hidden' }]}>
           <View style={[s.row, { flex: 1.4, gap: 9, padding: 11 }]}>
-            <Dot color={myTeam.color} label={myTeam.id} />
+            <TeamAvatar id={myTeam.id} color={myTeam.color} logoKey={myTeam.logoKey} size={32} />
             <View style={{ flex: 1 }}>
               <Text numberOfLines={1} style={{ color: t.text, fontFamily: FONT.bodyBold, fontSize: 12.5 }}>{myTeam.name}</Text>
               <Text style={{ color: t.dim, fontFamily: FONT.body, fontSize: 10 }}>Your wallet</Text>
@@ -167,7 +168,7 @@ export function Phone(p: PhoneProps) {
               const m = mgrById.get(tm.id);
               return (
                 <Pressable key={tm.id} onPress={() => setMgrSheet(tm.id)} style={[s.line, { gap: 10, backgroundColor: tm.id === p.myTeamId ? t.card : 'transparent' }]}>
-                  <Dot color={tm.color} label={tm.id} small />
+                  <TeamAvatar id={tm.id} color={tm.color} logoKey={tm.logoKey} size={28} />
                   <View style={{ flex: 1 }}>
                     <Text numberOfLines={1} style={{ color: t.text, fontFamily: FONT.bodySemi, fontSize: 12.5 }}>{tm.name}</Text>
                     <Text style={{ color: t.dim2, fontFamily: FONT.body, fontSize: 10 }}>{tm.owner}</Text>
@@ -301,15 +302,6 @@ function Sheet({ visible, onClose, t, children }: { visible: boolean; onClose: (
         </Pressable>
       </Pressable>
     </Modal>
-  );
-}
-
-function Dot({ color, label, small }: { color: string; label: string; small?: boolean }) {
-  const d = small ? 28 : 32;
-  return (
-    <View style={{ width: d, height: d, borderRadius: d / 2, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ color: '#fff', fontFamily: FONT.display, fontSize: 11 }}>{label.slice(0, 2).toUpperCase()}</Text>
-    </View>
   );
 }
 

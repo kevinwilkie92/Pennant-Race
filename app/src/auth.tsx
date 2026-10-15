@@ -7,8 +7,9 @@ type AuthState = {
   me: Me | null;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  refresh: () => Promise<void>;   // re-read your account and team (after renaming, new logo…)
 };
-const Ctx = createContext<AuthState>({ ready: false, me: null, signIn: async () => {}, signOut: async () => {} });
+const Ctx = createContext<AuthState>({ ready: false, me: null, signIn: async () => {}, signOut: async () => {}, refresh: async () => {} });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -37,6 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await saveItem('prToken', null);
     setMe(null);
   };
-  return <Ctx.Provider value={{ ready, me, signIn, signOut }}>{children}</Ctx.Provider>;
+  const refresh = async () => { try { setMe(await api.me()); } catch { /* keep what we have */ } };
+  return <Ctx.Provider value={{ ready, me, signIn, signOut, refresh }}>{children}</Ctx.Provider>;
 }
 export const useAuth = () => useContext(Ctx);

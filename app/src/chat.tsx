@@ -5,6 +5,7 @@ import { api, type ChatMessage, type Team } from './api';
 import { useAuth } from './auth';
 import { useRealtime } from './realtime';
 import { FONT, useTheme } from './theme';
+import { TeamAvatar } from './TeamAvatar';
 import { Body, Display } from './ui';
 
 const MAX = 500;
@@ -19,7 +20,7 @@ const Ctx = createContext<ChatState | null>(null);
 export const useChat = () => useContext(Ctx)!;
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
-  const { me } = useAuth();
+  const { me, refresh } = useAuth();
   const { subscribe, connected } = useRealtime();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -63,6 +64,10 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       const pm = ev.pinned as ChatMessage | null;
       setPinned(pm);
       setMessages((prev) => prev.map((x) => ({ ...x, pinned: !!pm && x.id === pm.id })));
+    } else if (ev.type === 'team') {
+      // someone changed their team name or logo
+      api.teams().then((t) => setTeams(new Map(t.map((x) => [x.id, x])))).catch(() => {});
+      if (ev.id === myTeam) refresh();
     } else if (ev.type === 'chat-delete') {
       setMessages((prev) => prev.filter((x) => x.id !== ev.id));
       setPinned((p) => (p && p.id === ev.id ? null : p));
@@ -124,11 +129,7 @@ function ChatOverlay() {
   const act = (fn: () => Promise<unknown>) => fn().catch((e) => setErr(e instanceof Error ? e.message : 'Failed'));
   const avatar = (teamId: string, size = 34) => {
     const tm = c.teams.get(teamId);
-    return (
-      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: tm?.color ?? t.dim2, alignItems: 'center', justifyContent: 'center' }}>
-        <Display style={{ fontSize: size * 0.36, color: '#fff' }}>{teamId}</Display>
-      </View>
-    );
+    return <TeamAvatar id={teamId} color={tm?.color ?? t.dim2} logoKey={tm?.logoKey} size={size} />;
   };
 
   const Reactions = ({ m }: { m: ChatMessage }) => {

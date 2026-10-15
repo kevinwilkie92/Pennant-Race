@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react
 import { useRouter } from 'expo-router';
 import { api, type BracketMatch, type MatchupRow, type StandingRow, type Team, type Txn } from '../../src/api';
 import { describeTxn } from '../../src/Transactions';
+import { TeamAvatar } from '../../src/TeamAvatar';
 import { useAuth } from '../../src/auth';
 import { fmtPts, useLeague } from '../../src/useLeague';
 import { FONT, useTheme } from '../../src/theme';
@@ -112,7 +113,7 @@ function Standings({ byId }: { byId: Map<string, Team> }) {
                 style={{ flexDirection: 'row', alignItems: 'center', padding: 10, gap: 8, borderTopWidth: 1, borderTopColor: t.line }}>
                 <Body style={{ width: 22, color: t.dim, fontFamily: FONT.num }}>{r.rank}</Body>
                 <View style={{ flex: 1, minWidth: 118, maxWidth: 118, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <View style={{ width: 4, height: 28, borderRadius: 2, backgroundColor: tm?.color ?? t.dim2 }} />
+                  {tm ? <TeamAvatar id={tm.id} color={tm.color} logoKey={tm.logoKey} size={26} /> : <View style={{ width: 26 }} />}
                   <Body numberOfLines={1} style={{ flex: 1, fontFamily: FONT.bodySemi, fontSize: 12.5 }}>
                     {tm?.name ?? r.teamId}{r.status === 'clinched' ? '  x' : r.status === 'eliminated' ? '  e' : ''}
                   </Body>

@@ -6,6 +6,7 @@ export type DraftEvent =
   | { type: 'sale'; season: number; playerId: number; teamId: string; price: number; seq: number }
   | { type: 'undo'; season: number; seq: number }
   | { type: 'keepers'; season: number }
+  | { type: 'team'; id: string }                    // a team's name or logo changed
   | { type: 'hat'; mlbTeam: string | null }
   | { type: 'chat'; message: ChatMessage }
   | { type: 'chat-react'; id: number; reactions: Record<string, string[]> }

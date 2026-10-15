@@ -4,6 +4,7 @@ import { playerSubline } from '@pennant/domain';
 import { api, type Team, type WeekInfo, type WeekSlot } from './api';
 import { fmtPts } from './useLeague';
 import { FONT, useTheme } from './theme';
+import { TeamAvatar } from './TeamAvatar';
 import { Body, Card, Display } from './ui';
 
 const HIT = new Set(['C', '1B', '2B', '3B', 'SS', 'IF', 'OF1', 'OF2', 'OF3', 'OF4', 'Util1', 'Util2']);
@@ -52,9 +53,7 @@ export function MatchupView({ week, weeks, onWeek, home, away, homeScore, awaySc
           const shown = [day === 'WEEK' ? homeScore : dayTotal(sides?.h), day === 'WEEK' ? awayScore : dayTotal(sides?.a)];
           return [home, away].map((tm, i) => (
             <View key={tm.id} style={{ flex: 1, alignItems: i ? 'flex-end' : 'flex-start' }}>
-              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: tm.color, alignItems: 'center', justifyContent: 'center', marginBottom: 6 }}>
-                <Display style={{ fontSize: 13, color: '#fff' }}>{tm.id}</Display>
-              </View>
+              <View style={{ marginBottom: 6 }}><TeamAvatar id={tm.id} color={tm.color} logoKey={tm.logoKey} size={36} /></View>
               <Body numberOfLines={1} style={{ fontFamily: FONT.bodyBold, fontSize: 13 }}>{tm.name}</Body>
               <Display style={{ fontSize: 34, color: shown[i] >= shown[1 - i] ? t.text : t.dim }}>{fmtPts(shown[i])}</Display>
             </View>
