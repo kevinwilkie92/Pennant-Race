@@ -51,6 +51,7 @@ export type KeeperView = {
   kept: KeeperRow[]; candidates: KeeperCandidate[];
 };
 
+export type LineupSlot = RosterSlot & { locked: boolean; points: number | null };
 export type WeekInfo = { week: number; start: string; end: string; final: boolean };
 export type MatchupRow = { week: number; home: string; away: string; homeScore: number; awayScore: number; final: boolean };
 export type StandingRow = {
@@ -88,6 +89,11 @@ export const api = {
     call<{ seq: number }>('/draft/sales', { method: 'POST', body: JSON.stringify(b) }),
   undo: () => call<{ ok: true }>('/draft/sales/last', { method: 'DELETE' }),
   setHat: (mlbTeam: string | null) => call<{ ok: true }>('/draft/hat', { method: 'POST', body: JSON.stringify({ mlbTeam }) }),
+  lineup: (teamId: string, date?: string) =>
+    call<{ season: number | null; date: string | null; today: string; editable: boolean; total: number; slots: LineupSlot[] }>(
+      `/teams/${teamId}/lineup${date ? `?date=${date}` : ''}`),
+  moveLineup: (teamId: string, b: { date: string; playerId: number; toSlot: string }) =>
+    call<{ ok: true }>(`/teams/${teamId}/lineup`, { method: 'PUT', body: JSON.stringify(b) }),
   weeks: () => call<{ season: number | null; current: number | null; weeks: WeekInfo[] }>(`/weeks?x=1${AS_OF}`),
   matchups: (week: number) => call<MatchupRow[]>(`/matchups?week=${week}${AS_OF}`),
   standings: () => call<{ season: number | null; playoffTeams: number; rows: StandingRow[] }>(`/standings?x=1${AS_OF}`),

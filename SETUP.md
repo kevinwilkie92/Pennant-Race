@@ -100,6 +100,20 @@ The commissioner opens **League** and enters the Monday week 1 starts; that crea
 Run `node api/scripts/league-e2e.mjs` to verify the math (it uses synthetic points and recomputes standings independently).
 To preview a finished season in the app, build with `EXPO_PUBLIC_AS_OF=2027-10-01` (demo only; the date the app treats as "today").
 
+## Lineups (My Team)
+
+- **Move / swap:** tap a player, pick a slot he's eligible for (empty slots are shown); if someone's there, they swap
+  (and must be eligible for the vacated slot). Hitters → INF/UTIL/OF rules, SP/RP only with that eligibility, bench takes anyone.
+- **Day stepper:** past days show the lineup *as it was* and the actual points; today and future days are editable.
+  A change applies from the day you make it (or a future day you pick) — it never rewrites history.
+- **First-pitch lock:** once a player's MLB team has started its game that day he can't be moved, and nobody can swap
+  into his slot. Locks need game start times in the `mlb_game` table, which the stats feed will fill; until then nothing locks.
+- Bench points are shown but not counted in the day's total.
+- Under the hood: `lineup_history` (one row per slot change with its effective date) lets the feed credit each day's points
+  to the slot the player held that day. Not built: "Optimize" (needs projections), lineup views for other teams.
+
+Run `npm run test:e2e` to run every end-to-end suite (keepers, league, lineup) against a fresh local database; no network needed.
+
 ## Stats feed — NOT connected yet
 
 Points come from the `daily_points` table (`season, date, team_id, player_id, slot, points`); everything above reads it.
@@ -112,17 +126,17 @@ so no ingestion code exists yet and **every score is 0 until it does**. To finis
    `scoreHitter` / `scorePitcher` (helpers `parseInnings`, `isQualityStart`, `singles` are in `@pennant/domain`), and writes `daily_points`.
 4. Update `player_position` from games played/started so eligibility (5 starts / 10 games; SP after 3 starts, RP after 5 relief apps) follows the real season.
 
-Also needed before points can be right: daily lineups. Today a team's lineup is just its roster; a player's points count for
-the slot he sits in on that date, so lineup editing (My Team → swap/move, locking at first pitch) has to record history.
+The feed also needs to fill `mlb_game` (first-pitch times, for the lineup lock) and should write each `daily_points` row's
+`slot` from `lineup_history` (the slot he held that day) — the `/teams/:id/lineup?date=` endpoint already shows how to resolve it.
 
 ## What's built vs. next
 
 Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code, roster / draft-state /
 commissioner sale + undo endpoints with server-side bid validation, live draft broadcast (Durable Object WebSocket),
 the TV draft board, the phone draft companion, the keepers picker + season push, the schedule / standings / matchup /
-bracket engine and screens, and the app's login, My Team lineup (read-only), League, and theme switcher
+bracket engine and screens, lineup editing with daily history and first-pitch locks, and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
-Next, roughly in order: connect the stats feed (above), lineup editing with daily history, Players / free agents and
+Next, roughly in order: connect the stats feed (above), Players / free agents and
 waivers / trades, chat, editing archived draft results, team logo upload (R2), Google/Apple sign-in, and a
 "currently nominated player" strip for the phone companion.

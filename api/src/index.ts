@@ -9,6 +9,7 @@ import {
 import type { AppVars, Env } from './types';
 import type { DraftEvent } from './draft-room';
 import { registerLeague } from './league';
+import { registerLineup } from './lineup';
 import { loadRoster } from './roster';
 
 export { DraftRoom } from './draft-room';
@@ -329,5 +330,6 @@ async function liveSeason(env: Env): Promise<number | null> {
 }
 
 registerLeague(app);
+registerLineup(app);
 
 export default app;

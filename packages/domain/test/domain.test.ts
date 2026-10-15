@@ -68,6 +68,24 @@ describe('eligibility', () => {
   });
 });
 
+describe('canFillSlot with roster labels', () => {
+  it('accepts the label forms used in the lineup (OF1, Util2, IF, B3, SP4)', () => {
+    expect(canFillSlot('OF3', ['OF'])).toBe(true);
+    expect(canFillSlot('OF3', ['SS'])).toBe(false);
+    expect(canFillSlot('Util2', ['1B'])).toBe(true);
+    expect(canFillSlot('Util1', ['Util'])).toBe(true);
+    expect(canFillSlot('Util1', ['SP'])).toBe(false);
+    expect(canFillSlot('IF', ['3B'])).toBe(true);
+    expect(canFillSlot('IF', ['OF'])).toBe(false);
+    expect(canFillSlot('IF', ['C'])).toBe(false);
+    expect(canFillSlot('C', ['C', '1B'])).toBe(true);
+    expect(canFillSlot('SP4', ['SP', 'RP'])).toBe(true);
+    expect(canFillSlot('RP2', ['SP'])).toBe(false);
+    expect(canFillSlot('B3', ['SP'])).toBe(true);
+    expect(canFillSlot('OF1', ['Util'])).toBe(false);
+  });
+});
+
 describe('assignSlots', () => {
   it('keeps given slots and fills the rest by position, then IF, Util, bench', () => {
     const m = assignSlots([
