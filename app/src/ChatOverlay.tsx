@@ -1,8 +1,8 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MAX_GROUP, MAX_GROUP_NAME, MIN_GROUP, activeMention, completeMention, groupTitle, lastSentBy, seenBy, seenLabel, splitMentions } from '@pennant/domain';
-import { api, chatImageUrl, type ChatMessage } from './api';
+import { MAX_GROUP, MAX_GROUP_NAME, MIN_GROUP, MIN_SEARCH, activeMention, cleanQuery, completeMention, groupTitle, highlightParts, lastSentBy, seenBy, seenLabel, splitMentions } from '@pennant/domain';
+import { api, chatImageUrl, type ChatHit, type ChatMessage } from './api';
 import { useAuth } from './auth';
 import { groupIdOf, groupScope, useChat, type Scope } from './chat';
 import { pickImage, shrinkForChat } from './images';
@@ -40,20 +40,21 @@ export function ChatOverlay() {
   const group = gid != null ? c.groupFor(gid) : undefined;
   const others = group ? group.members.filter((m) => m !== c.myTeam) : [];
   const title = group ? groupTitle(group.name, others.map(name)) : '';
-  const deep = inDm || gid != null || c.view.kind === 'newgroup';          // inside a conversation (has a back arrow, no tabs)
+  const deep = inDm || gid != null || c.view.kind === 'newgroup' || c.view.kind === 'search';          // inside a conversation (has a back arrow, no tabs)
   const [info, setInfo] = useState(false);
 
   return (
     <Modal visible={c.open} animationType="slide" onRequestClose={() => c.setOpen(false)}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, backgroundColor: t.bg }}>
         <View style={{ paddingTop: insets.top + 8, paddingHorizontal: 16, paddingBottom: 6, backgroundColor: t.panel, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          {deep && <Pressable onPress={() => c.setView({ kind: 'dms' })} hitSlop={12}><Display style={{ fontSize: 26 }}>‹</Display></Pressable>}
+          {deep && <Pressable onPress={() => c.setView(c.view.kind === 'search' ? { kind: 'league' } : { kind: 'dms' })} hitSlop={12}><Display style={{ fontSize: 26 }}>‹</Display></Pressable>}
           {gid != null && group && <GroupFace members={others} />}
           {inDm && byId.get(inDm) && <TeamAvatar id={inDm} color={byId.get(inDm)!.color} logoKey={byId.get(inDm)!.logoKey} size={30} />}
           <View style={{ flex: 1 }}>
-            <Display style={{ fontSize: 21 }} numberOfLines={1}>{inDm ? name(inDm) : gid != null ? title : c.view.kind === 'newgroup' ? 'New group' : c.view.kind === 'dms' ? 'Direct Messages' : 'League Chat'}</Display>
+            <Display style={{ fontSize: 21 }} numberOfLines={1}>{inDm ? name(inDm) : gid != null ? title : c.view.kind === 'newgroup' ? 'New group' : c.view.kind === 'search' ? 'Search' : c.view.kind === 'dms' ? 'Direct Messages' : 'League Chat'}</Display>
             <Body style={{ color: c.connected ? t.green : t.dim2, fontSize: 11 }}>{c.connected ? '● Live' : 'Reconnecting…'}{inDm ? ' · only you two can see this' : gid != null && group ? ` · ${group.members.length} teams · members only` : ''}</Body>
           </View>
+          {!deep && <Pressable onPress={() => c.setView({ kind: 'search' })} hitSlop={12}><Body style={{ fontSize: 20 }}>🔍</Body></Pressable>}
           {gid != null && group && <Pressable onPress={() => setInfo(true)} hitSlop={12}><Display style={{ fontSize: 13, color: t.dim }}>MEMBERS</Display></Pressable>}
           <Pressable onPress={() => c.setOpen(false)} hitSlop={12}><Display style={{ fontSize: 15, color: t.red }}>CLOSE</Display></Pressable>
         </View>
@@ -121,6 +122,8 @@ export function ChatOverlay() {
           </ScrollView>
         ) : c.view.kind === 'newgroup' ? (
           <NewGroup />
+        ) : c.view.kind === 'search' ? (
+          <SearchView />
         ) : (
           <Conversation key={c.view.kind === 'dm' ? c.view.team : c.view.kind === 'group' ? groupScope(c.view.id) : 'league'}
             scope={c.view.kind === 'dm' ? c.view.team : c.view.kind === 'group' ? groupScope(c.view.id) : 'league'} />
@@ -161,6 +164,23 @@ function Conversation({ scope }: { scope: Scope }) {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const scroller = useRef<ScrollView>(null);
   const stick = useRef(true);
+  const ys = useRef(new Map<number, number>());                       // each message's position, for jumping to a search result
+  const [flash, setFlash] = useState<number | null>(null);
+  const focusId = c.focus && c.focus.scope === scope ? c.focus : null;
+  useEffect(() => {
+    if (!focusId) return;
+    stick.current = false;
+    let tries = 0;
+    const go = () => {
+      const y = ys.current.get(focusId.id);
+      if (y == null) { if (tries++ < 20) setTimeout(go, 100); return; }
+      scroller.current?.scrollTo({ y: Math.max(0, y - 70), animated: true });
+      setFlash(focusId.id);
+      setTimeout(() => setFlash((f) => (f === focusId.id ? null : f)), 2600);
+    };
+    const id = setTimeout(go, 150);
+    return () => clearTimeout(id);
+  }, [focusId?.nonce, thread.messages.length > 0]);
 
   const act = (fn: () => Promise<unknown>) => fn().catch((e) => setErr(e instanceof Error ? e.message : 'Failed'));
   const mention = scope === 'league' ? activeMention(text) : null;
@@ -239,7 +259,8 @@ function Conversation({ scope }: { scope: Scope }) {
           const imgUrl = chatImageUrl(m.imageKey);
           const reactions = Object.entries(m.reactions);
           return (
-            <View key={m.id} style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+            <View key={m.id} onLayout={(e) => ys.current.set(m.id, e.nativeEvent.layout.y)}
+              style={{ flexDirection: 'row', gap: 10, marginBottom: 14, borderRadius: 8, backgroundColor: flash === m.id ? 'rgba(209,154,31,0.22)' : 'transparent' }}>
               <TeamAvatar id={m.teamId} color={tm?.color ?? t.dim2} logoKey={tm?.logoKey} size={34} />
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
@@ -461,5 +482,77 @@ function GroupInfo({ groupId, onClose }: { groupId: number; onClose: () => void 
         </Pressable>
       </Pressable>
     </Modal>
+  );
+}
+
+
+// ---------------------------------------------------------------------------------------------
+
+/** Search the league room plus your own direct messages and groups. Tap a result to jump to it. */
+function SearchView() {
+  const c = useChat();
+  const { t } = useTheme();
+  const { byId } = useTeams();
+  const [text, setText] = useState('');
+  const [scope, setScope] = useState<'all' | 'league' | 'private'>('all');
+  const [hits, setHits] = useState<ChatHit[] | null>(null);
+  const [more, setMore] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const q = cleanQuery(text);
+  const name = (id: string) => byId.get(id)?.name ?? id;
+
+  useEffect(() => {
+    setErr('');
+    if (!q) { setHits(null); setMore(false); return; }
+    setBusy(true);
+    let live = true;
+    const id = setTimeout(() => {
+      api.chatSearch(q, scope).then((r) => { if (live) { setHits(r.results); setMore(r.hasMore); } })
+        .catch((e) => live && setErr(e instanceof Error ? e.message : 'Search failed')).finally(() => live && setBusy(false));
+    }, 300);
+    return () => { live = false; clearTimeout(id); };
+  }, [q, scope]);
+
+  const loadMore = async () => {
+    if (!q || !hits?.length) return;
+    setBusy(true);
+    try { const r = await api.chatSearch(q, scope, hits[hits.length - 1].message.id); setHits([...hits, ...r.results]); setMore(r.hasMore); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Search failed'); }
+    setBusy(false);
+  };
+  const label = (h: ChatHit) => (h.where.kind === 'league' ? 'League' : h.where.kind === 'dm' ? `DM · ${name(h.where.team)}`
+    : `Group · ${groupTitle(c.groupFor(h.where.id)?.name, (c.groupFor(h.where.id)?.members ?? []).filter((m) => m !== c.myTeam).map(name))}`);
+  const chip = (k: typeof scope, l: string) => (
+    <Pressable key={k} onPress={() => setScope(k)} style={{ paddingHorizontal: 13, paddingVertical: 6, marginRight: 6, borderRadius: t.radius.chip, borderWidth: 1, borderColor: scope === k ? t.red : t.line, backgroundColor: scope === k ? t.red : 'transparent' }}>
+      <Display style={{ fontSize: 12.5, color: scope === k ? '#fff' : t.dim }}>{l}</Display>
+    </Pressable>
+  );
+  return (
+    <ScrollView contentContainerStyle={{ padding: 14 }} keyboardShouldPersistTaps="handled">
+      <TextInput value={text} onChangeText={setText} autoFocus placeholder="Search messages" placeholderTextColor={t.dim2} autoCapitalize="none"
+        style={{ color: t.text, backgroundColor: t.card, borderColor: t.line, borderWidth: 1, borderRadius: t.radius.button, paddingHorizontal: 12, paddingVertical: 10, fontFamily: FONT.body, marginBottom: 10 }} />
+      <View style={{ flexDirection: 'row', marginBottom: 10 }}>{chip('all', 'Everything')}{chip('league', 'League')}{chip('private', 'Direct & groups')}</View>
+      {!q && <Body style={{ color: t.dim, textAlign: 'center', padding: 24 }}>Type at least {MIN_SEARCH} characters. Only messages you can read are searched.</Body>}
+      {busy && !hits && <ActivityIndicator color={t.red} style={{ margin: 16 }} />}
+      {!!err && <Body style={{ color: t.loss }}>{err}</Body>}
+      {q && hits && hits.length === 0 && !busy && <Body style={{ color: t.dim, textAlign: 'center', padding: 24 }}>No messages match “{q}”.</Body>}
+      {hits?.map((h) => (
+        <Pressable key={h.message.id} onPress={() => c.openMessage(h.where, h.message.id)}
+          style={{ padding: 12, borderRadius: t.radius.card, backgroundColor: t.card, borderColor: t.line, borderWidth: 1, marginBottom: 8 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+            <Body style={{ color: t.gold, fontFamily: FONT.bodyBold, fontSize: 11, letterSpacing: 0.5, flexShrink: 1 }} numberOfLines={1}>{label(h)}</Body>
+            <Body style={{ color: t.dim2, fontSize: 11 }}>{clock(h.message.createdAt)}</Body>
+          </View>
+          <Body style={{ fontFamily: FONT.bodySemi, fontSize: 13, color: byId.get(h.message.teamId)?.color ?? t.text, marginTop: 2 }}>{name(h.message.teamId)}</Body>
+          <Body style={{ fontSize: 14, lineHeight: 20, marginTop: 2 }} numberOfLines={4}>
+            {highlightParts(h.message.body, q ?? '').map((p, i) => p.hit
+              ? <Body key={i} style={{ backgroundColor: 'rgba(209,154,31,0.35)', fontFamily: FONT.bodyBold, fontSize: 14 }}>{p.text}</Body>
+              : <Body key={i} style={{ fontSize: 14 }}>{p.text}</Body>)}
+          </Body>
+        </Pressable>
+      ))}
+      {more && <Pressable onPress={loadMore} disabled={busy} style={{ alignItems: 'center', padding: 12 }}><Body style={{ color: t.red, fontFamily: FONT.bodyBold }}>{busy ? 'Loading…' : 'Show more results'}</Body></Pressable>}
+    </ScrollView>
   );
 }

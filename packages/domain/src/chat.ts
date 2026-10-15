@@ -142,3 +142,34 @@ export function seenLabel(s: { teams: string[]; all: boolean }, name: (t: string
   if (!group) return 'Seen';
   return s.all ? 'Seen by everyone' : `Seen by ${s.teams.map(name).join(', ')}`;
 }
+
+// ------------------------------------------------------------ message search
+
+export const MIN_SEARCH = 2;
+export const MAX_SEARCH = 100;
+
+/** Trims and bounds a search query; null if it is too short to search for. */
+export function cleanQuery(raw: unknown): string | null {
+  const q = (typeof raw === 'string' ? raw : '').replace(/\s+/g, ' ').trim();
+  return [...q].length >= MIN_SEARCH && [...q].length <= MAX_SEARCH ? q : null;
+}
+
+/** A SQL LIKE pattern matching `q` anywhere, with the wildcard characters in `q` taken literally (use ESCAPE '\'). */
+export const likePattern = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+
+/** Splits text into pieces, marking the ones that match the query (case-insensitive), for highlighting. */
+export function highlightParts(text: string, q: string): { text: string; hit: boolean }[] {
+  const needle = q.toLowerCase();
+  if (!needle) return [{ text, hit: false }];
+  const hay = text.toLowerCase();
+  const out: { text: string; hit: boolean }[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const at = hay.indexOf(needle, i);
+    if (at < 0) { out.push({ text: text.slice(i), hit: false }); break; }
+    if (at > i) out.push({ text: text.slice(i, at), hit: false });
+    out.push({ text: text.slice(at, at + needle.length), hit: true });
+    i = at + needle.length;
+  }
+  return out.length ? out : [{ text, hit: false }];
+}

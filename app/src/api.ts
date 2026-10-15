@@ -109,6 +109,8 @@ export type ChatMessage = {
   replyTo: { id: number; teamId?: string; body?: string; hasImage?: boolean; deleted?: boolean } | null;
 };
 export type DmConversation = { team: string; unread: number; last: { id: number; fromMe: boolean; body: string; hasImage: boolean; createdAt: number } };
+export type ChatWhere = { kind: 'league' } | { kind: 'dm'; team: string } | { kind: 'group'; id: number };
+export type ChatHit = { message: ChatMessage; where: ChatWhere };
 export type ChatReceipt = { teamId: string; lastId: number; at: number | null };
 export type ChatGroup = { id: number; name: string | null; createdBy: string; members: string[] };
 export type GroupConversation = ChatGroup & { unread: number; last: { id: number; teamId: string; fromMe: boolean; body: string; hasImage: boolean; createdAt: number } | null };
@@ -204,6 +206,8 @@ export const api = {
   chatGroupAdd: (id: number, teamId: string) => call<{ group: ChatGroup }>(`/chat/groups/${id}/members`, { method: 'POST', body: JSON.stringify({ teamId }) }),
   chatGroupLeave: (id: number) => call<{ ok: true }>(`/chat/groups/${id}/members/me`, { method: 'DELETE' }),
   chatGroupRead: (groupId: number, lastId: number) => call<{ ok: true }>('/chat/group-read', { method: 'POST', body: JSON.stringify({ groupId, lastId }) }),
+  chatSearch: (q: string, scope = 'all', before?: number) =>
+    call<{ q: string; results: ChatHit[]; hasMore: boolean }>(`/chat/search?q=${encodeURIComponent(q)}&scope=${encodeURIComponent(scope)}${before ? `&before=${before}` : ''}`),
   chatSettings: () => call<{ readReceipts: boolean }>('/chat/settings'),
   setChatSettings: (readReceipts: boolean) => call<{ readReceipts: boolean }>('/chat/settings', { method: 'PUT', body: JSON.stringify({ readReceipts }) }),
   chatDms: () => call<{ conversations: DmConversation[]; totalUnread: number }>('/chat/dms'),

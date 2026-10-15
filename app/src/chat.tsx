@@ -1,12 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { api, type ChatGroup, type ChatMessage, type ChatReceipt, type DmConversation, type GroupConversation } from './api';
+import { api, type ChatGroup, type ChatMessage, type ChatReceipt, type ChatWhere, type DmConversation, type GroupConversation } from './api';
 import { ChatOverlay } from './ChatOverlay';
 import { useAuth } from './auth';
 import { useRealtime } from './realtime';
 import { useTeams } from './teams';
 
 export type Scope = 'league' | string;                       // 'league', the other team's id (direct message), or `group:<id>`
-export type View = { kind: 'league' } | { kind: 'dms' } | { kind: 'dm'; team: string } | { kind: 'group'; id: number } | { kind: 'newgroup' };
+export type View = { kind: 'league' } | { kind: 'dms' } | { kind: 'dm'; team: string } | { kind: 'group'; id: number } | { kind: 'newgroup' } | { kind: 'search' };
 export const groupScope = (id: number) => `group:${id}`;
 export const groupIdOf = (scope: Scope) => (scope.startsWith('group:') ? Number(scope.slice(6)) : null);
 export type Thread = { messages: ChatMessage[]; hasMore: boolean; loaded: boolean; receipts?: ChatReceipt[] };
@@ -23,6 +23,8 @@ export type ChatState = {
   edit: (id: number, body: string) => Promise<void>;
   react: (id: number, emoji: string) => Promise<void>; pin: (id: number, pinned: boolean) => Promise<void>; remove: (id: number) => Promise<void>;
   loadOlder: (scope: Scope) => Promise<void>; ensureThread: (scope: Scope) => Promise<ChatMessage[]>; sendTyping: (scope: Scope) => void;
+  focus: { scope: Scope; id: number; nonce: number } | null;           // a message to scroll to and flash (from search)
+  openMessage: (where: ChatWhere, id: number) => Promise<void>;
   receiptsOn: boolean; setReceiptsOn: (on: boolean) => Promise<void>;
   groupFor: (id: number) => ChatGroup | undefined;
   createGroup: (teamIds: string[], name?: string) => Promise<number>;
@@ -50,6 +52,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const [groups, setGroups] = useState<GroupConversation[]>([]);
   const [groupsLoaded, setGroupsLoaded] = useState(false);
   const [receiptsOn, setReceiptsOnState] = useState(true);
+  const [focus, setFocus] = useState<{ scope: Scope; id: number; nonce: number } | null>(null);
   const [unread, setUnread] = useState({ league: 0, mentions: 0, dm: 0 });
   const [typing, setTyping] = useState<Record<string, Record<string, number>>>({});
   const [, tick] = useState(0);
@@ -202,6 +205,24 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       }
     },
     ensureThread,
+    focus,
+    // Jump to a message found by search: open its conversation, page back until it is loaded, then ask the view to scroll to it.
+    openMessage: async (where, id) => {
+      const scope: Scope = where.kind === 'league' ? 'league' : where.kind === 'dm' ? where.team : groupScope(where.id);
+      setOpen(true);
+      setView(where.kind === 'league' ? { kind: 'league' } : where.kind === 'dm' ? { kind: 'dm', team: where.team } : { kind: 'group', id: where.id });
+      let cur = scope === 'league' ? leagueRef.current.messages : await ensureThread(scope);
+      for (let n = 0; n < 12 && !cur.some((m) => m.id === id) && cur.length; n++) {
+        const gid = groupIdOf(scope);
+        const r = scope === 'league' ? await api.chat(cur[0].id) : gid != null ? await api.chatGroup(gid, cur[0].id) : await api.chatDm(scope, cur[0].id);
+        if (!r.messages.length) break;
+        cur = [...r.messages, ...cur];
+        if (scope === 'league') setLeague((l) => ({ ...l, messages: cur, hasMore: r.hasMore }));
+        else setThreads((t) => ({ ...t, [scope]: { ...t[scope], messages: cur, hasMore: r.hasMore, loaded: true } }));
+        if (!r.hasMore) break;
+      }
+      setFocus({ scope, id, nonce: Date.now() });
+    },
     receiptsOn,
     setReceiptsOn: async (on) => {
       await api.setChatSettings(on);
@@ -221,7 +242,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       lastTypingSent.current = now;
       wsSend({ type: 'typing', scope });
     },
-  }), [open, view, league, threads, convs, groups, receiptsOn, emoji, connected, loading, myTeam, unread, typing, ensureThread, wsSend, loadDms]);
+  }), [open, view, league, threads, convs, groups, receiptsOn, focus, emoji, connected, loading, myTeam, unread, typing, ensureThread, wsSend, loadDms]);
 
   return <Ctx.Provider value={state}>{children}<ChatOverlay /></Ctx.Provider>;
 }

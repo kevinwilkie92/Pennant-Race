@@ -1,5 +1,5 @@
 import type { Hono } from 'hono';
-import { MAX_GROUP, cleanGroupName, memberKey, parseMentions, validateGroup } from '@pennant/domain';
+import { MAX_GROUP, cleanGroupName, cleanQuery, likePattern, memberKey, parseMentions, validateGroup } from '@pennant/domain';
 import { requireAuth, requireCommissioner } from './auth';
 import type { ChatMessage } from './draft-room';
 import { broadcast } from './realtime';
@@ -292,6 +292,41 @@ export function registerChat(app: App) {
       if (listeners.length) await broadcast(c.env, { type: 'chat-read', scope: 'group', group: groupId, teamId: u.teamId!, lastId: upTo, at: now }, listeners);
     }
     return c.json({ ok: true });
+  });
+
+  // ------------------------------------------------------------------ search
+  // Searches only what you are allowed to read: the league room, your own direct messages, and the groups you are in
+  // (from when you joined). `scope` narrows it: all | league | private | dm:<team> | group:<id>. Newest first; `before` pages back.
+  app.get('/chat/search', requireAuth, async (c) => {
+    const team = c.get('user').teamId ?? '';
+    const q = cleanQuery(c.req.query('q'));
+    if (!q) return c.json({ error: 'Type at least 2 characters to search' }, 400);
+    const scope = c.req.query('scope') ?? 'all';
+    const from = c.req.query('from');
+    const limit = Math.min(Math.max(Number(c.req.query('limit') ?? 30), 1), 50);
+    const before = Number(c.req.query('before') ?? 0);
+
+    const league = '(m.to_team IS NULL AND m.group_id IS NULL)';
+    const dm = '(m.to_team IS NOT NULL AND (m.team_id = ?2 OR m.to_team = ?2))';
+    const grp = '(m.group_id IS NOT NULL AND EXISTS (SELECT 1 FROM chat_group_member gm WHERE gm.group_id = m.group_id AND gm.team_id = ?2 AND m.id > gm.from_id))';
+    let where: string, extra: unknown[] = [];
+    if (scope === 'league') where = league;
+    else if (scope === 'private') where = `(${dm} OR ${grp})`;
+    else if (scope.startsWith('dm:')) { where = `(${dm} AND (m.team_id = ?5 OR m.to_team = ?5))`; extra = [scope.slice(3)]; }
+    else if (scope.startsWith('group:')) { where = `(${grp} AND m.group_id = ?5)`; extra = [Number(scope.slice(6))]; }
+    else where = `(${league} OR ${dm} OR ${grp})`;
+
+    const { results } = await c.env.DB.prepare(
+      `SELECT ${COLS} FROM ${FROM}
+        WHERE m.body LIKE ?1 ESCAPE '\\' AND ${where} AND (?3 IS NULL OR m.team_id = ?3) AND (?4 = 0 OR m.id < ?4)
+        ORDER BY m.id DESC LIMIT ${limit + 1}`,
+    ).bind(likePattern(q), team, from ?? null, before, ...extra).all<Row>();
+    const hits = results.slice(0, limit).map(toMessage);
+    const out = hits.map((m) => ({
+      message: m,
+      where: m.groupId ? { kind: 'group' as const, id: m.groupId } : m.toTeam ? { kind: 'dm' as const, team: m.teamId === team ? m.toTeam : m.teamId } : { kind: 'league' as const },
+    }));
+    return c.json({ q, results: out, hasMore: results.length > limit });
   });
 
   // ------------------------------------------------------------------ settings

@@ -135,3 +135,22 @@ describe('read receipts', () => {
     expect(seenLabel({ teams: ['B', 'C'], all: true }, name, true)).toBe('Seen by everyone');
   });
 });
+
+import { cleanQuery, highlightParts, likePattern } from '../src';
+describe('message search helpers', () => {
+  it('cleans queries', () => {
+    expect(cleanQuery('  trade   deadline ')).toBe('trade deadline');
+    expect(cleanQuery('a')).toBeNull(); expect(cleanQuery('   ')).toBeNull(); expect(cleanQuery(5)).toBeNull();
+    expect(cleanQuery('x'.repeat(101))).toBeNull(); expect(cleanQuery('x'.repeat(100))).toBe('x'.repeat(100));
+  });
+  it('escapes LIKE wildcards so they match literally', () => {
+    expect(likePattern('50%_off\\')).toBe('%50\\%\\_off\\\\%');
+    expect(likePattern('plain')).toBe('%plain%');
+  });
+  it('highlights every case-insensitive match', () => {
+    expect(highlightParts('Trade the trader', 'trade')).toEqual([{ text: 'Trade', hit: true }, { text: ' the ', hit: false }, { text: 'trade', hit: true }, { text: 'r', hit: false }]);
+    expect(highlightParts('nothing here', 'zzz')).toEqual([{ text: 'nothing here', hit: false }]);
+    expect(highlightParts('abc', '')).toEqual([{ text: 'abc', hit: false }]);
+    expect(highlightParts('aaa', 'aa').map((p) => p.text).join('')).toBe('aaa');
+  });
+});
