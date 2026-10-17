@@ -16,6 +16,8 @@ for suite in keepers-e2e league-e2e lineup-e2e waivers-e2e trades-e2e extras-e2e
   echo "=== $suite"
   out=$(node "scripts/$suite.mjs" 2>&1); rc=$?
   echo "$out" | grep -E "FAIL|PASSED|FAILED"
+  # A suite that printed no verdict didn't really run (server not up, crash): say so instead of staying silent.
+  if ! echo "$out" | grep -qE "PASSED|FAILED"; then echo "NO RESULT (the suite did not finish):"; echo "$out" | tail -5; rc=1; fi
   [ $rc -ne 0 ] && status=1
   kill $pid 2>/dev/null; pkill -x workerd 2>/dev/null; sleep 1
 done
