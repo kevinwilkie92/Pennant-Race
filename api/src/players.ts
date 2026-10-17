@@ -331,16 +331,6 @@ export function registerPlayers(app: App) {
     return c.json({ ok: true });
   });
 
-  app.get('/league/settings', requireAuth, async (c) => c.json({ waiverDays: await waiverDays(c.env) }));
-  app.put('/league/settings', requireAuth, requireCommissioner, async (c) => {
-    const b = await c.req.json<{ waiverDays?: number }>();
-    if (b.waiverDays !== undefined && !(Number.isInteger(b.waiverDays) && b.waiverDays >= 0 && b.waiverDays <= 14)) return c.json({ error: 'Waiver period must be 0–14 days' }, 400);
-    const row = await c.env.DB.prepare('SELECT settings_json AS s FROM league WHERE id = 1').first<{ s: string }>();
-    const cur = (() => { try { return JSON.parse(row?.s ?? '{}'); } catch { return {}; } })();
-    await c.env.DB.prepare('UPDATE league SET settings_json = ? WHERE id = 1').bind(JSON.stringify({ ...cur, ...(b.waiverDays !== undefined ? { waiverDays: b.waiverDays } : {}) })).run();
-    return c.json({ waiverDays: await waiverDays(c.env) });
-  });
-
   // Everything we know about a player from our own data. Season / game-log / career stats need the stats feed.
   app.get('/players/:id/card', requireAuth, async (c) => {
     const id = Number(c.req.param('id'));

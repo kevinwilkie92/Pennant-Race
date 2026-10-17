@@ -109,6 +109,11 @@ export type ChatMessage = {
   replyTo: { id: number; teamId?: string; body?: string; hasImage?: boolean; deleted?: boolean } | null;
 };
 export type DmConversation = { team: string; unread: number; last: { id: number; fromMe: boolean; body: string; hasImage: boolean; createdAt: number } };
+export type LeagueSettings = {
+  name: string; waiverDays: number; signupsOpen: boolean; season: number | null; schedule: { created: boolean; start: string | null };
+  commissioners: { teamId: string; name: string; owner: string; isCommissioner: boolean; hasAccount: boolean }[];
+  joinCode?: string | null; joinCodeSource?: 'app' | 'server' | 'none'; audit?: { id: number; at: number; teamId: string | null; detail: string }[];
+};
 export type PushPrefs = { dm: boolean; group: boolean; mention: boolean; trade: boolean; waiver: boolean; preview: boolean };
 export type ChatWhere = { kind: 'league' } | { kind: 'dm'; team: string } | { kind: 'group'; id: number };
 export type ChatHit = { message: ChatMessage; where: ChatWhere };
@@ -196,7 +201,12 @@ export const api = {
   feedSetMlbId: (playerId: number, mlbId: number | null) =>
     call<{ ok: true }>(`/stats/players/${playerId}/mlb-id`, { method: 'PUT', body: JSON.stringify({ mlbId }) }),
   playerCard: (id: number) => call<PlayerCardData>(`/players/${id}/card`),
-  leagueSettings: () => call<{ waiverDays: number }>('/league/settings'),
+  leagueSettings: () => call<LeagueSettings>('/league/settings'),
+  setLeagueSettings: (b: { name?: string; waiverDays?: number; signupsOpen?: boolean }) => call<{ name: string; waiverDays: number; signupsOpen: boolean }>('/league/settings', { method: 'PUT', body: JSON.stringify(b) }),
+  setJoinCode: (code?: string) => call<{ code: string; source: string }>('/league/join-code', { method: 'POST', body: JSON.stringify(code ? { code } : {}) }),
+  resetJoinCode: () => call<{ code: string; source: string }>('/league/join-code', { method: 'DELETE' }),
+  setCommissioner: (teamId: string, commissioner: boolean) => call<{ ok: true; changed: boolean }>(`/league/commissioners/${teamId}`, { method: 'PUT', body: JSON.stringify({ commissioner }) }),
+  publicLeague: () => call<{ name: string; signupsOpen: boolean }>('/public/league'),
   setWaiverDays: (waiverDays: number) => call<{ waiverDays: number }>('/league/settings', { method: 'PUT', body: JSON.stringify({ waiverDays }) }),
   chat: (before?: number) => call<{ messages: ChatMessage[]; hasMore: boolean; pinned: ChatMessage | null; emoji: string[] }>(`/chat?limit=40${before ? `&before=${before}` : ''}`),
   chatDm: (team: string, before?: number) => call<{ messages: ChatMessage[]; hasMore: boolean; receipts: ChatReceipt[] }>(`/chat/dm/${team}?limit=40${before ? `&before=${before}` : ''}`),

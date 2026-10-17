@@ -1,6 +1,7 @@
 import type { Hono } from 'hono';
 import { IdTokenError, emailVerified, verifyIdToken, type IdClaims, type Jwk } from '@pennant/domain';
 import { createSession } from './auth';
+import { signupGate, signupsOpen } from './league-settings';
 import type { AppVars, Env } from './types';
 
 type App = Hono<{ Bindings: Env; Variables: AppVars }>;
@@ -75,8 +76,10 @@ export function registerSocial(app: App) {
     }
 
     // …otherwise this is a new manager: same gate as email sign-up (league join code + an unclaimed team).
+    if (!(await signupsOpen(c.env))) return c.json({ error: 'Sign-ups are closed. Ask your commissioner to open them.' }, 403);
     if (!b.joinCode || !b.teamId) return c.json({ error: 'New here: enter the league join code and pick your team', needsSignup: true, email }, 409);
-    if (!c.env.JOIN_CODE || b.joinCode !== c.env.JOIN_CODE) return c.json({ error: 'Invalid league join code' }, 403);
+    const gate = await signupGate(c.env, b.joinCode);
+    if (gate) return c.json({ error: gate.error }, gate.status);
     if (!(await db.prepare('SELECT id FROM team WHERE id = ?').bind(b.teamId).first())) return c.json({ error: 'Unknown team' }, 400);
     if (await db.prepare('SELECT 1 FROM user WHERE team_id = ?').bind(b.teamId).first()) return c.json({ error: 'That team already has an owner account' }, 409);
 

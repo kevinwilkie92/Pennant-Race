@@ -1,6 +1,7 @@
 import { Image, Pressable, Text, View } from 'react-native';
 import { FONT } from '../theme';
 import type { SeasonRow } from '../api';
+import { useTeams } from '../teams';
 import { D } from './tokens';
 
 export type Tab = 'board' | 'rosters' | 'undrafted' | 'keepers' | 'log';
@@ -20,12 +21,13 @@ type Props = {
 };
 
 export function Nav(p: Props) {
+  const { leagueName } = useTeams();
   const status = p.seasons.find((s) => s.year === p.season)?.status;
   return (
     <View style={{ height: 64, backgroundColor: D.nav, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, gap: 18, borderBottomColor: D.line, borderBottomWidth: 1 }}>
       <Pressable onPress={p.onBack}><Text style={{ color: D.dim, fontSize: 24 }}>‹</Text></Pressable>
       <Image source={require('../../assets/logo.png')} style={{ width: 40, height: 40, resizeMode: 'contain' }} />
-      <Text style={{ fontFamily: FONT.display, color: D.text, fontSize: 22, letterSpacing: 1.5 }}>CARROLLTON ALL STARS</Text>
+      <Text style={{ fontFamily: FONT.display, color: D.text, fontSize: 22, letterSpacing: 1.5 }}>{leagueName.toUpperCase()}</Text>
       <View style={{ flexDirection: 'row', gap: 22, marginLeft: 10, alignSelf: 'stretch' }}>
         {TABS.map((t) => {
           const on = p.tab === t.key;

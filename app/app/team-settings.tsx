@@ -77,6 +77,10 @@ function Settings() {
       </Card>
 
       <NotificationsCard />
+      <Pressable onPress={() => router.push('/league-settings')} style={{ borderColor: t.line, borderWidth: 1, borderRadius: t.radius.button, padding: 14, marginBottom: 12 }}>
+        <Display style={{ fontSize: 15 }}>League settings ›</Display>
+        <Body style={{ color: t.dim, fontSize: 12 }}>{me?.user.isCommissioner ? 'League name, commissioners, sign-ups and join code, waivers, season tools.' : 'Who the commissioners are, the waiver period and the rules.'}</Body>
+      </Pressable>
       {me?.user.isCommissioner && (
         <Pressable onPress={() => router.push('/stats-feed')} style={{ borderColor: t.line, borderWidth: 1, borderRadius: t.radius.button, padding: 14, marginBottom: 12 }}>
           <Display style={{ fontSize: 15 }}>MLB stats feed ›</Display>

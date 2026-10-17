@@ -147,6 +147,21 @@ The app registers its Expo token with the server, and the server sends through E
 Housekeeping: a device whose browser says it has unsubscribed (HTTP 404/410), or whose Expo token is rejected, is removed automatically; one that keeps failing is dropped after 8 failures in a row.
 A person can have up to 10 devices; a device belongs to whoever signed in on it last. Notification text is truncated to a lock-screen length. `PUSH_ALLOW_LOCAL` and `EXPO_PUSH_URL` exist only for the tests.
 
+## League settings and commissioners
+
+*Team settings → League settings.* Everyone can open it and see the league name, who the commissioners are, the waiver period and the rules; only commissioners can change anything.
+
+- **More than one commissioner.** Any commissioner can make another team's manager a commissioner (or remove one, or step down themselves). They all have the same powers (the draft, setting any lineup, these settings, the stats feed,
+  vetoing trades, moderating the league room). The role changes take effect immediately, live, with no new sign-in. Guard rails: a team can only be made commissioner once its manager has signed up, and the league can never be
+  left without a signed-up commissioner. Every change is written to *Recent changes* (who did what, never the join codes) so co-commissioners can see what each other did.
+  Under the hood it is the same `is_commissioner` flag on the team that the first commissioner (Acuña Matata) had from the seed, so nothing changes for existing data.
+- **League name.** Shown on the login screen, the draft board and here; changing it updates every screen live.
+- **Sign-ups and the join code.** *New managers can sign up* is a switch: close it once everyone has joined and nobody new can register (by email or Google/Apple), even with the code; existing managers still sign in.
+  The join code is shown to commissioners: make a fresh random one (like `K7MQ-X2PD`), type your own (6+ letters/numbers), or go back to the one the server was deployed with (`JOIN_CODE`). A code set in the app overrides the server's;
+  the old code stops working at once; capitals, spaces and the hyphen are ignored. The code is stored in the league database, readable by commissioners, because it is an invitation, not a password.
+- **Waiver period**, **schedule** (create the season calendar and round robin from a Monday start date), **Run waivers now**, and a shortcut to the **MLB stats feed**.
+- **The rules** (roster size, $300 budget, 5 keepers, FAAB, scoring tables, playoff size) are displayed for reference but are built into the app and are not editable here; changing them means changing the code.
+
 ## Matchups, standings and playoffs
 
 The commissioner opens **League** and enters the Monday week 1 starts; that creates 26 Monday–Sunday weeks and a
@@ -305,7 +320,7 @@ Notes: *Trending* is "hottest this week" by points, not "most added". Postseason
 Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code, roster / draft-state /
 commissioner sale + undo endpoints with server-side bid validation, live draft broadcast (Durable Object WebSocket),
 the TV draft board, the phone draft companion, the keepers picker + season push, the schedule / standings / matchup /
-bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, group chats, read receipts, message search, push notifications (see its section), replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, the live "on the block" nomination (the commissioner's DRAFT click puts the player, leader and bid on the TV board and every phone's NOW BIDDING strip; it clears on cancel, sale or a new hat draw, expires after 15 minutes, and late joiners get it on connect), the MLB stats feed (see its section), Google/Apple sign-in (see its section), archived-draft corrections (on a FINAL season's Draft Log the commissioner can change a price, change who drafted a player, or remove a sale; a team change also moves him on that team's frozen roster, the $300 budget and roster-room rules still apply, and keeper sales and players kept into a later season are locked), and the app's login, My Team, League, and theme switcher
+bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, group chats, read receipts, message search, push notifications (see its section), league settings with multiple commissioners (see its section), replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, the live "on the block" nomination (the commissioner's DRAFT click puts the player, leader and bid on the TV board and every phone's NOW BIDDING strip; it clears on cancel, sale or a new hat draw, expires after 15 minutes, and late joiners get it on connect), the MLB stats feed (see its section), Google/Apple sign-in (see its section), archived-draft corrections (on a FINAL season's Draft Log the commissioner can change a price, change who drafted a player, or remove a sale; a team change also moves him on that team's frozen roster, the $300 budget and roster-room rules still apply, and keeper sales and players kept into a later season are locked), and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
-Nothing is queued; the remaining ideas are career stats, 15/60-day IL types, and a commissioner screen for league settings.
+Nothing is queued; the remaining ideas are career stats, 15/60-day IL types, and making the fixed rules (budget, roster size, scoring) editable.

@@ -12,6 +12,7 @@ import type { Nomination } from './draft-room';
 import { registerDraftEdit } from './draft-edit';
 import { registerLeague } from './league';
 import { registerPush } from './push';
+import { registerLeagueSettings, signupGate } from './league-settings';
 import { registerSocial } from './social';
 import { registerStats, runFeed } from './stats';
 import { registerChat } from './chat';
@@ -35,7 +36,8 @@ app.get('/', (c) => c.json({ ok: true, service: 'pennant-race-api' }));
 // ------------------------------------------------------------------ auth
 app.post('/auth/register', async (c) => {
   const { email, password, teamId, joinCode } = await c.req.json<{ email: string; password: string; teamId: string; joinCode: string }>();
-  if (!c.env.JOIN_CODE || joinCode !== c.env.JOIN_CODE) return c.json({ error: 'Invalid league join code' }, 403);
+  const gate = await signupGate(c.env, joinCode);
+  if (gate) return c.json({ error: gate.error }, gate.status);
   if (!email || !password || password.length < 8) return c.json({ error: 'Email and a password of 8+ characters required' }, 400);
   const team = await c.env.DB.prepare('SELECT id FROM team WHERE id = ?').bind(teamId).first();
   if (!team) return c.json({ error: 'Unknown team' }, 400);
@@ -387,6 +389,7 @@ async function liveSeason(env: Env): Promise<number | null> {
 
 registerDraftEdit(app);
 registerSocial(app);
+registerLeagueSettings(app);
 registerPush(app);
 registerStats(app);
 registerLeague(app);

@@ -3,6 +3,7 @@ import { Image, ImageBackground, KeyboardAvoidingView, Platform, Pressable, Scro
 import { Redirect } from 'expo-router';
 import { ApiError, api, setToken } from '../src/api';
 import { useAuth } from '../src/auth';
+import { useTeams } from '../src/teams';
 import { saveItem } from '../src/storage';
 import { SocialButtons } from '../src/SocialButtons';
 import type { ProviderConfig, SocialCredential } from '../src/social';
@@ -13,6 +14,7 @@ const C = { text: '#fff', dim: '#90a4bf', line: 'rgba(255,255,255,0.14)', red: '
 
 export default function Login() {
   const { me, signIn, signInWithToken } = useAuth();
+  const { leagueName, signupsOpen } = useTeams();
   const [mode, setMode] = useState<'in' | 'join'>('in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -74,7 +76,7 @@ export default function Login() {
           <View style={{ alignItems: 'center', marginBottom: 18 }}>
             <Image source={require('../assets/logo.png')} style={{ width: 120, height: 120, resizeMode: 'contain' }} />
             <Text style={{ fontFamily: FONT.display, fontStyle: 'italic', fontSize: 34, color: C.text, letterSpacing: 1 }}>PENNANT RACE</Text>
-            <Text style={{ fontFamily: FONT.bodySemi, fontSize: 13, color: C.dim, letterSpacing: 3 }}>CARROLLTON ALL STARS</Text>
+            <Text style={{ fontFamily: FONT.bodySemi, fontSize: 13, color: C.dim, letterSpacing: 3 }}>{leagueName.toUpperCase()}</Text>
           </View>
 
           <View style={{ backgroundColor: C.card, borderColor: C.line, borderWidth: 1, borderRadius: 16, padding: 18, maxWidth: 440, width: '100%', alignSelf: 'center' }}>
@@ -128,11 +130,13 @@ export default function Login() {
                 <SocialButtons config={providers} disabled={busy} onCredential={(c) => social(c)} onError={setErr} />
               </>
             )}
+            {(signupsOpen || mode === 'join' || !!pending) ? (
             <Pressable onPress={() => { setErr(''); if (pending) { setPending(null); setMode('in'); } else setMode(mode === 'in' ? 'join' : 'in'); }} style={{ marginTop: 14, alignItems: 'center' }}>
               <Text style={{ color: C.dim, fontFamily: FONT.bodySemi }}>
                 {pending ? 'Cancel' : mode === 'in' ? 'New here? Join with your league code' : 'Already have an account? Sign in'}
               </Text>
             </Pressable>
+            ) : <Text style={{ color: C.dim, fontFamily: FONT.body, fontSize: 12, textAlign: 'center', marginTop: 14 }}>Sign-ups are closed. Ask your commissioner.</Text>}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
