@@ -17,7 +17,7 @@ const ICONS = {
 
 function Header() {
   const { t, name, setTheme } = useTheme();
-  const { signOut } = useAuth();
+  const { signOut, me } = useAuth();
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -52,6 +52,17 @@ function Header() {
             </Pressable>
             <Pressable onPress={() => { setOpen(false); router.push('/draft'); }} style={{ marginBottom: 14 }}>
               <Text style={{ color: t.text, fontFamily: FONT.bodyBold, fontSize: 15 }}>Big Board (TV)</Text>
+            </Pressable>
+            <Pressable onPress={() => { setOpen(false); router.push('/league-settings'); }} style={{ marginBottom: 14 }}>
+              <Text style={{ color: t.text, fontFamily: FONT.bodyBold, fontSize: 15 }}>League settings</Text>
+            </Pressable>
+            {me?.user.isCommissioner && (
+              <Pressable onPress={() => { setOpen(false); router.push('/stats-feed'); }} style={{ marginBottom: 14 }}>
+                <Text style={{ color: t.text, fontFamily: FONT.bodyBold, fontSize: 15 }}>MLB stats feed</Text>
+              </Pressable>
+            )}
+            <Pressable onPress={() => { setOpen(false); router.push('/team-settings'); }} style={{ marginBottom: 14 }}>
+              <Text style={{ color: t.text, fontFamily: FONT.bodyBold, fontSize: 15 }}>Team settings</Text>
             </Pressable>
             <Pressable onPress={() => { setOpen(false); signOut(); }}>
               <Text style={{ color: t.red, fontFamily: FONT.bodyBold, fontSize: 15 }}>Sign out</Text>
