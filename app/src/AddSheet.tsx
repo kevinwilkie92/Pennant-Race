@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Modal, Platform, Pressable, ScrollView, TextInput, View } from 'react-native';
-import { ROSTER_SIZE } from '@pennant/domain';
+import { rosterSizeOf } from '@pennant/domain';
+import { useTeams } from './teams';
 import { api, type LineupSlot, type PoolPlayer } from './api';
 import { FONT, useTheme } from './theme';
 import { Body, Display } from './ui';
@@ -11,6 +12,8 @@ export function AddSheet({ player, teamId, onClose, onDone }: {
 }) {
   const { t } = useTheme();
   const [faab, setFaab] = useState<number | null>(null);
+  const { rules } = useTeams();
+  const ROSTER_SIZE = rosterSizeOf(rules.roster);
   const [roster, setRoster] = useState<LineupSlot[]>([]);
   const [bid, setBid] = useState('0');
   const [drop, setDrop] = useState<number | null>(null);

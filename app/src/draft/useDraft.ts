@@ -25,7 +25,7 @@ export function useDraft() {
   const [season, setSeason] = useState<number | null>(null);
   const [players, setPlayers] = useState<DraftPlayer[]>([]);
   const [mlb, setMlb] = useState<MlbTeam[]>([]);
-  const { teams } = useTeams();
+  const { teams, rules } = useTeams();
   const { subscribe, connected: live } = useRealtime();
   const [state, setState] = useState<DraftState | null>(null);
   const [error, setError] = useState('');
@@ -76,11 +76,11 @@ export function useDraft() {
       const mine = (state?.sales ?? []).filter((s) => s.teamId === tm.id);
       const slots = assignSlots(mine.map((s) => ({
         playerId: s.playerId, slot: s.slot, positions: byPlayer.get(s.playerId)?.positions ?? [],
-      })));
+      })), rules.roster);
       roster.set(tm.id, mine.flatMap((s) => (slots.has(s.playerId) ? [{ sale: s, label: slots.get(s.playerId)! }] : [])));
     }
     return { byPlayer, sale, roster };
-  }, [players, state, teams]);
+  }, [players, state, teams, rules.roster]);
 
   return { seasons, season, setSeason, reloadSeasons, status, players, mlb, teams, state, error, live, refresh, ...derived };
 }

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import {
-  assignSlots, keeperCost, keeperTier, maxBid, validateBid, ROSTER_SIZE, slotLabelRank,
+  assignSlots, keeperCost, keeperTier, maxBid, validateBid, rosterSizeOf, slotLabelRank,
 } from '@pennant/domain';
 import {
   bearer, createSession, destroySession, hashPassword, requireAuth, requireCommissioner, verifyPassword, userForToken,
@@ -129,10 +129,10 @@ async function draftState(env: Env, yr: number) {
   const rules = await loadRules(env);
   return {
     season: yr,
-    rules: { budget: rules.budget, minBid: rules.minBid },
+    rules: { budget: rules.budget, minBid: rules.minBid, rosterSize: rosterSizeOf(rules.roster) },
     hat: hat.mlbTeam,
     nomination: await currentNomination(env),
-    managers: money.map((m) => ({ ...m, remaining: rules.budget - m.spent, maxBid: maxBid(m.spent, m.filled, rules.budget, ROSTER_SIZE, rules.minBid), spots: ROSTER_SIZE - m.filled })),
+    managers: money.map((m) => ({ ...m, remaining: rules.budget - m.spent, maxBid: maxBid(m.spent, m.filled, rules.budget, rosterSizeOf(rules.roster), rules.minBid), spots: rosterSizeOf(rules.roster) - m.filled })),
     sales,
   };
 }
@@ -165,7 +165,7 @@ app.post('/seasons/push', requireAuth, requireCommissioner, async (c) => {
     for (const r of sales) byTeam.set(r.teamId, [...(byTeam.get(r.teamId) ?? []), r]);
     for (const [teamId, rows] of byTeam) {
       const taken = used.results.filter((u) => u.teamId === teamId).map((u, i) => ({ playerId: -1 - i, positions: [] as string[], slot: u.slot }));
-      const slots = assignSlots([...taken, ...rows.map((r) => ({ playerId: r.playerId, positions: r.positions.split(','), slot: null }))]);
+      const slots = assignSlots([...taken, ...rows.map((r) => ({ playerId: r.playerId, positions: r.positions.split(','), slot: null }))], (await loadRules(c.env)).roster);
       for (const r of rows) {
         const slot = slots.get(r.playerId);
         if (slot) stmts.push(c.env.DB.prepare('INSERT INTO roster_slot (season, team_id, player_id, slot) VALUES (?, ?, ?, ?)').bind(live, teamId, r.playerId, slot));
@@ -262,7 +262,7 @@ app.put('/keepers', requireAuth, async (c) => {
     if (mine >= rules.maxKeepers) return c.json({ error: `At most ${rules.maxKeepers} keepers per team` }, 400);
     const money = await c.env.DB.prepare('SELECT COALESCE(SUM(price), 0) AS spent, COUNT(*) AS filled FROM draft_sale WHERE season = ? AND team_id = ?')
       .bind(yr, teamId).first<{ spent: number; filled: number }>();
-    const check = validateBid(cand.cost, money?.spent ?? 0, money?.filled ?? 0, rules);
+    const check = validateBid(cand.cost, money?.spent ?? 0, money?.filled ?? 0, { ...rules, rosterSize: rosterSizeOf(rules.roster) });
     if (!check.ok) return c.json({ error: check.reason }, 400);
     const seq = ((await c.env.DB.prepare('SELECT COALESCE(MAX(seq), 0) AS s FROM draft_sale WHERE season = ?').bind(yr).first<{ s: number }>())?.s ?? 0) + 1;
     await c.env.DB.batch([
@@ -339,9 +339,10 @@ app.put('/draft/nomination', requireAuth, requireCommissioner, async (c) => {
   if (teamId !== null) {
     const money = await c.env.DB.prepare('SELECT COALESCE(SUM(price), 0) AS spent, COUNT(*) AS filled FROM draft_sale WHERE season = ? AND team_id = ?').bind(yr, teamId).first<{ spent: number; filled: number }>();
     if (!(await c.env.DB.prepare('SELECT 1 FROM team WHERE id = ?').bind(teamId).first())) return c.json({ error: 'Unknown team' }, 400);
-    if ((money?.filled ?? 0) >= ROSTER_SIZE) return c.json({ error: 'That team’s roster is full' }, 400);
     const rules = await loadRules(c.env);
-    const cap = maxBid(money?.spent ?? 0, money?.filled ?? 0, rules.budget, ROSTER_SIZE, rules.minBid);
+    const size = rosterSizeOf(rules.roster);
+    if ((money?.filled ?? 0) >= size) return c.json({ error: 'That team’s roster is full' }, 400);
+    const cap = maxBid(money?.spent ?? 0, money?.filled ?? 0, rules.budget, size, rules.minBid);
     if (bid !== null && bid > cap) return c.json({ error: `That team’s max bid is $${cap}` }, 400);
   }
   const nomination: Nomination = { playerId: p.playerId, name: p.name, mlbTeam: p.mlbTeam, positions: p.positions, teamId, bid, at: Date.now() };
@@ -362,7 +363,8 @@ app.post('/draft/sales', requireAuth, requireCommissioner, async (c) => {
   const money = await c.env.DB.prepare(
     'SELECT COALESCE(SUM(price), 0) AS spent, COUNT(*) AS filled FROM draft_sale WHERE season = ? AND team_id = ?',
   ).bind(yr, teamId).first<{ spent: number; filled: number }>();
-  const check = validateBid(price, money?.spent ?? 0, money?.filled ?? 0, await loadRules(c.env));
+  const rl = await loadRules(c.env);
+  const check = validateBid(price, money?.spent ?? 0, money?.filled ?? 0, { ...rl, rosterSize: rosterSizeOf(rl.roster) });
   if (!check.ok) return c.json({ error: check.reason }, 400);
 
   const last = await c.env.DB.prepare('SELECT COALESCE(MAX(seq), 0) AS seq FROM draft_sale WHERE season = ?').bind(yr).first<{ seq: number }>();

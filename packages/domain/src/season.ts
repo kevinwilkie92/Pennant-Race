@@ -84,7 +84,7 @@ export type Row = {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-export function standings(teamIds: string[], results: Result[], regularWeeks = REGULAR_WEEKS): Row[] {
+export function standings(teamIds: string[], results: Result[], regularWeeks = REGULAR_WEEKS, playoffTeams = PLAYOFF_TEAMS): Row[] {
   const rows = new Map<string, { w: number; l: number; t: number; pf: number; pa: number; seq: string[] }>();
   for (const id of teamIds) rows.set(id, { w: 0, l: 0, t: 0, pf: 0, pa: 0, seq: [] });
 
@@ -126,7 +126,7 @@ export function standings(teamIds: string[], results: Result[], regularWeeks = R
   return base.map((x) => {
     const couldCatch = base.filter((y) => y !== x && maxWins(y) >= curWins(x)).length;
     const alreadyAhead = base.filter((y) => y !== x && curWins(y) > maxWins(x)).length;
-    const status = couldCatch < PLAYOFF_TEAMS ? 'clinched' : alreadyAhead >= PLAYOFF_TEAMS ? 'eliminated' : 'alive';
+    const status = playoffTeams <= 0 ? 'alive' : couldCatch < playoffTeams ? 'clinched' : alreadyAhead >= playoffTeams ? 'eliminated' : 'alive';
     return { ...x, status } as Row;
   });
 }
@@ -134,22 +134,41 @@ export function standings(teamIds: string[], results: Result[], regularWeeks = R
 // ------------------------------------------------------------ playoffs
 
 export type Match = {
-  id: 'QF1' | 'QF2' | 'SF1' | 'SF2' | 'FINAL' | 'THIRD';
-  round: 'Quarterfinal' | 'Semifinal' | 'Championship' | '3rd Place';
+  /** FINAL, THIRD, or a round prefix with a number: SF1, QF2, R16-3. */
+  id: string;
+  round: string;
   week: number;
   a: string | null; b: string | null;            // team ids (null until decided)
   aScore: number | null; bScore: number | null;
   winner: string | null; loser: string | null;
 };
 
+/** Rounds needed for `teams` playoff teams (6 teams: 3 rounds, with byes for the top 2). */
+export const playoffRounds = (teams: number) => (teams < 2 ? 0 : Math.ceil(Math.log2(teams)));
+/** Weeks in a whole season: the regular season plus one week per playoff round. */
+export const totalWeeks = (regularWeeks: number, playoffTeams: number) => regularWeeks + playoffRounds(playoffTeams);
+
+/** Standard bracket order for a field of `size` (a power of two): [1,8,4,5,2,7,3,6] for 8. Seed 1 meets 2 only in the final. */
+function bracketOrder(size: number): number[] {
+  let order = [1];
+  while (order.length < size) order = order.flatMap((s) => [s, order.length * 2 + 1 - s]);
+  return order;
+}
+const ROUND_NAMES = ['Championship', 'Semifinal', 'Quarterfinal', 'Round of 16'];
+const ROUND_IDS = ['FINAL', 'SF', 'QF', 'R16-'];
+
 /**
- * 6-team bracket: seeds 1–2 get byes. QF (wk24): 3v6, 4v5. SF (wk25): 1 vs winner(4v5), 2 vs winner(3v6).
- * Week 26: Championship (SF winners) + 3rd place (SF losers). Ties go to the higher seed.
- * `score(teamId, week)` returns that team's week total or null if the week hasn't finished.
+ * Single-elimination bracket for any field of 2 or more teams, seeded in the usual way. Seeds that don't fill the bracket get
+ * byes (6 teams: seeds 1–2). Round r is played in week `regularWeeks + r`; the last week also has a 3rd-place game between the
+ * semifinal losers. Ties go to the higher seed. `score(teamId, week)` returns that team's week total, or null if the week hasn't finished.
+ * With the defaults (6 teams, 23 regular weeks) this is the league's original bracket: QF 3v6 and 4v5, SF 1 vs 4/5 and 2 vs 3/6, final in week 26.
  */
-export function buildBracket(seeds: string[], score: (teamId: string, week: number) => number | null): Match[] {
+export function buildBracket(seeds: string[], score: (teamId: string, week: number) => number | null, opts: { playoffTeams?: number; regularWeeks?: number } = {}): Match[] {
+  const n = opts.playoffTeams ?? PLAYOFF_TEAMS, reg = opts.regularWeeks ?? REGULAR_WEEKS;
+  const rounds = playoffRounds(n);
+  if (rounds === 0) return [];
   const seedOf = (id: string) => seeds.indexOf(id);
-  const play = (id: Match['id'], round: Match['round'], week: number, a: string | null, b: string | null): Match => {
+  const play = (id: string, round: string, week: number, a: string | null, b: string | null): Match => {
     let aS: number | null = null, bS: number | null = null, winner: string | null = null, loser: string | null = null;
     if (a && b) {
       aS = score(a, week); bS = score(b, week);
@@ -160,14 +179,32 @@ export function buildBracket(seeds: string[], score: (teamId: string, week: numb
     }
     return { id, round, week, a, b, aScore: aS, bScore: bS, winner, loser };
   };
-  const [s1, s2, s3, s4, s5, s6] = seeds.length >= PLAYOFF_TEAMS ? seeds : [...seeds, ...Array(PLAYOFF_TEAMS).fill(null)].slice(0, PLAYOFF_TEAMS);
-  const qf1 = play('QF1', 'Quarterfinal', 24, s3 ?? null, s6 ?? null);
-  const qf2 = play('QF2', 'Quarterfinal', 24, s4 ?? null, s5 ?? null);
-  const sf1 = play('SF1', 'Semifinal', 25, s1 ?? null, qf2.winner);
-  const sf2 = play('SF2', 'Semifinal', 25, s2 ?? null, qf1.winner);
-  return [
-    qf1, qf2, sf1, sf2,
-    play('FINAL', 'Championship', 26, sf1.winner, sf2.winner),
-    play('THIRD', '3rd Place', 26, sf1.loser, sf2.loser),
-  ];
+
+  // A node is a team entering the bracket (a seed) or the game that produces its winner. `best` is the best (lowest) seed in its
+  // part of the bracket; games in a round are numbered by it (QF1 holds seed 3's game when seeds 1–2 have byes).
+  type Node = { team: string | null; best: number; present: boolean; match?: Match };
+  const size = 2 ** rounds;
+  let nodes: Node[] = bracketOrder(size).map((seed) => ({ team: seed <= n ? seeds[seed - 1] ?? null : null, best: seed, present: seed <= n }));
+  const out: Match[] = [];
+  let semis: Match[] = [];
+  for (let r = 1; r <= rounds; r++) {
+    const fromEnd = rounds - r;                         // 0 = the final
+    const roundName = ROUND_NAMES[fromEnd] ?? `Round of ${size >> (r - 1)}`;
+    const next: Node[] = [];
+    const games: { match: Match; best: number }[] = [];
+    for (let i = 0; i < nodes.length; i += 2) {
+      const x = nodes[i], y = nodes[i + 1];
+      if (!x.present || !y.present) { next.push(x.present ? x : y); continue; }                 // a bye: whoever is there moves straight on
+      const match = play('', roundName, reg + r, x.match ? x.match.winner : x.team, y.match ? y.match.winner : y.team);
+      games.push({ match, best: Math.min(x.best, y.best) });
+      next.push({ team: null, best: Math.min(x.best, y.best), present: true, match });
+    }
+    games.sort((p, q) => p.best - q.best);
+    games.forEach((g, k) => { g.match.id = fromEnd === 0 ? 'FINAL' : `${ROUND_IDS[fromEnd] ?? `R${size >> (r - 1)}-`}${k + 1}`; });
+    out.push(...games.map((g) => g.match));
+    if (fromEnd === 1) semis = games.map((g) => g.match);
+    nodes = next;
+  }
+  if (rounds >= 2 && semis.length === 2) out.push(play('THIRD', '3rd Place', reg + rounds, semis[0].loser, semis[1].loser));
+  return out;
 }

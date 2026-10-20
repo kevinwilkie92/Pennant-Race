@@ -269,6 +269,7 @@ export const api = {
   teamWeek: (teamId: string, week: number) =>
     call<{ season: number; week: number; days: string[]; slots: WeekSlot[] }>(`/teams/${teamId}/week?week=${week}`),
   createSchedule: (startDate: string) => call<{ weeks: number }>('/schedule', { method: 'POST', body: JSON.stringify({ startDate }) }),
+  deleteSchedule: () => call<{ ok: true }>('/schedule', { method: 'DELETE' }),
   teams: () => call<Team[]>('/teams'),
   roster: (teamId: string, season = 2026) =>
     call<{ season: number; teamId: string; slots: RosterSlot[] }>(`/teams/${teamId}/roster?season=${season}`),

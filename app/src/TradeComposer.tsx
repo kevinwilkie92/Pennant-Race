@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
-import { ROSTER_SIZE } from '@pennant/domain';
+import { rosterSizeOf } from '@pennant/domain';
+import { useTeams } from './teams';
 import { api, type LineupSlot, type Team } from './api';
 import { FONT, useTheme } from './theme';
 import { Body, Card, Display } from './ui';
@@ -16,6 +17,8 @@ export function TradeComposer({ myTeamId, teams, initialTeam, initialPlayer, onS
   const [mine, setMine] = useState<LineupSlot[] | null>(null);
   const [theirs, setTheirs] = useState<LineupSlot[] | null>(null);
   const [give, setGive] = useState<number[]>([]);
+  const { rules } = useTeams();
+  const ROSTER_SIZE = rosterSizeOf(rules.roster);
   const [get, setGet] = useState<number[]>(initialPlayer ? [initialPlayer] : []);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);

@@ -1,5 +1,6 @@
 import type { Hono } from 'hono';
-import { INJURY_STATUSES, ROSTER_SIZE, canFillSlot, countsAgainstRoster, isILSlot, placePlayer, resolveWaivers, type Claim } from '@pennant/domain';
+import { INJURY_STATUSES, canFillSlot, countsAgainstRoster, isILSlot, placePlayer, resolveWaivers, rosterSizeOf, type Claim } from '@pennant/domain';
+import { loadRules } from './league-settings';
 import { notifyTeams } from './push';
 import { playerStats } from './stats';
 import { requireAuth, requireCommissioner } from './auth';
@@ -65,7 +66,8 @@ export async function processWaivers(env: Env, asOf?: string): Promise<ProcessRe
   const owned = new Set([...(await ownerMap(env, yr)).keys()]);
 
   const input: Claim[] = claims.map((c) => ({ id: c.id, teamId: c.teamId, addId: c.addId, dropId: c.dropId, bid: c.bid, priority: c.priority }));
-  const { outcomes, waiverPos } = resolveWaivers(input, teams, owned);
+  const layout = (await loadRules(env)).roster;
+  const { outcomes, waiverPos } = resolveWaivers(input, teams, owned, rosterSizeOf(layout));
 
   const today = leagueToday();
   const now = Date.now();
@@ -89,7 +91,7 @@ export async function processWaivers(env: Env, asOf?: string): Promise<ProcessRe
     const rest = lineup.filter((e) => e.playerId !== o.dropId);
     const moves = drop && !isILSlot(drop.slot) && canFillSlot(drop.slot, add.positions)
       ? new Map<number, string>([[o.addId, drop.slot]])
-      : placePlayer(rest.map((e) => ({ playerId: e.playerId, positions: e.positions, slot: e.slot })), { playerId: o.addId, positions: add.positions });
+      : placePlayer(rest.map((e) => ({ playerId: e.playerId, positions: e.positions, slot: e.slot })), { playerId: o.addId, positions: add.positions }, layout);
     if (!moves) { // can't happen while the roster limit equals the slot count, but never lose a claim silently
       stmts.push(db.prepare("UPDATE waiver_claim SET status = 'failed', reason = ?, processed_at = ? WHERE id = ?").bind('No legal lineup slot', now, o.claimId));
       continue;
@@ -223,7 +225,7 @@ export function registerPlayers(app: App) {
     if (drop != null && !roster.some((e) => e.playerId === drop)) return 'The player you chose to drop is not on your roster';
     const dropped = drop != null ? roster.find((e) => e.playerId === drop) : undefined;
     const frees = dropped && countsAgainstRoster(dropped.slot, dropped.injury) ? 1 : 0;
-    if (activeCount(roster) - frees + 1 > ROSTER_SIZE) {
+    if (activeCount(roster) - frees + 1 > rosterSizeOf((await loadRules(env)).roster)) {
       return dropped && !frees ? 'Dropping an injured-list player doesn’t free a roster spot — choose someone else to drop' : 'Your roster is full — choose a player to drop';
     }
     const dup = await env.DB.prepare("SELECT id FROM waiver_claim WHERE season = ? AND team_id = ? AND add_player_id = ? AND status = 'pending'").bind(yr, teamId, add).first<{ id: number }>();

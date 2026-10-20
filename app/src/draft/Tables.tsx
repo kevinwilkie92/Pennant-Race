@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { ROSTER_LABELS, ROSTER_SIZE } from '@pennant/domain';
+import { rosterLabels, rosterSizeOf } from '@pennant/domain';
 import { useTeams } from '../teams';
 import { api, type DraftManager, type DraftPlayer, type DraftSale, type Team } from '../api';
 import { TeamAvatar } from '../TeamAvatar';
@@ -29,10 +29,10 @@ export function Rosters({ teams, managers, roster, highlight }: {
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
                 <Text style={{ color: D.green, fontFamily: FONT.bodyBold, fontSize: 11 }}>Max ${m?.maxBid ?? 0}</Text>
                 <Text style={{ color: D.dim, fontFamily: FONT.bodyBold, fontSize: 11 }}>${m?.remaining ?? rules.budget} left</Text>
-                <Text style={{ color: D.dim, fontFamily: FONT.bodyBold, fontSize: 11 }}>{m?.filled ?? 0}/{ROSTER_SIZE}</Text>
+                <Text style={{ color: D.dim, fontFamily: FONT.bodyBold, fontSize: 11 }}>{m?.filled ?? 0}/{rosterSizeOf(rules.roster)}</Text>
               </View>
             </View>
-            {ROSTER_LABELS.map((label) => {
+            {rosterLabels(rules.roster).map((label) => {
               const s = byLabel.get(label);
               return (
                 <View key={label} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8, gap: 8, borderTopColor: D.line, borderTopWidth: 1 }}>

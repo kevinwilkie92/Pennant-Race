@@ -192,18 +192,19 @@ can change retroactively; the screen asks you to confirm. Career stats are recom
 and a combination where a full 26-player roster at the minimum bid wouldn't fit in the budget. It tells you which team or slot is in the way. Changing the budget or keeper settings after the auction or keeper picks have started does not re-price what is already done:
 existing sales and chosen keepers keep their prices.
 
-**Still built in (not editable):** the roster layout (26 players: C, 1B, 2B, 3B, SS, IF, 4 OF, 2 Util, 4 SP, 4 RP, 6 bench), the 23-week round-robin season, and the top-6 playoff format. Those shape how lineups, schedules and the bracket work and would need code changes.
+**Roster layout** (League settings → Roster): how many of each slot — C, 1B, 2B, 3B, SS, IF, OF, Util, SP, RP, bench — from 10 to 40 players in all, with at least one hitter and one pitcher slot. The default is the original 26. Draft size, max-bid math, the roster limit, trades, waivers and lineups all follow it. The app refuses a change that would leave a team with more players than slots, or a player in a slot that no longer exists (move him first); it also refuses if the budget couldn't fit a full roster at the minimum bid.
+
+**Season format** (League settings → Season format): regular-season weeks (1–26, a round robin repeated as needed) and playoff teams (0 for none, otherwise 2–8). Byes go to the top seeds when the field isn't a power of two; rounds are named Championship / Semifinal / Quarterfinal / Round of 16, with a 3rd-place game when there are two or more rounds. The regular weeks plus the playoff rounds must fit in 26 weeks. These apply when a schedule is *created*; a schedule already built keeps the format it was made with. Commissioners can **Rebuild schedule** (League settings → Season), which deletes it so it can be created again with the current rules — refused once any scores exist for that season.
 
 ## Matchups, standings and playoffs
 
-The commissioner opens **League** and enters the Monday week 1 starts; that creates 26 Monday–Sunday weeks and a
-23-week round-robin. Then:
+The commissioner opens **League** and enters the Monday week 1 starts; that creates the regular-season weeks (23 by default) plus the playoff weeks (3 by default), Monday–Sunday. Then:
 
 - **Standings:** W-L, PCT, GB, streak, PF, PA, FAAB (tap a header to sort), playoff line after team 6, `x` clinched / `e` eliminated.
 - **Matchups:** every game for a week; tap one to open it exactly like the Matchup tab.
 - **Matchup tab:** your game for the current week, week switcher, Mon–Sun day toggle, rosters side by side
   (top number = that day's points, bottom = week total).
-- **Bracket:** 6 teams, weeks 24–26 — seeds 1–2 get byes; QF 3v6 and 4v5; SF 1 v (4/5 winner), 2 v (3/6 winner);
+- **Bracket (defaults shown; size follows the season format):** 6 teams, weeks 24–26 — seeds 1–2 get byes; QF 3v6 and 4v5; SF 1 v (4/5 winner), 2 v (3/6 winner);
   week 26 championship and 3rd-place game. Ties go to the higher seed. Seeds lock when week 23 ends.
 
 Run `node api/scripts/league-e2e.mjs` to verify the math (it uses synthetic points and recomputes standings independently).
@@ -355,4 +356,4 @@ the TV draft board, the phone draft companion, the keepers picker + season push,
 bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, group chats, read receipts, message search, push notifications (see its section), league settings with multiple commissioners and editable rules (see their sections), replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, the live "on the block" nomination (the commissioner's DRAFT click puts the player, leader and bid on the TV board and every phone's NOW BIDDING strip; it clears on cancel, sale or a new hat draw, expires after 15 minutes, and late joiners get it on connect), the MLB stats feed (see its section), Google/Apple sign-in (see its section), archived-draft corrections (on a FINAL season's Draft Log the commissioner can change a price, change who drafted a player, or remove a sale; a team change also moves him on that team's frozen roster, the $300 budget and roster-room rules still apply, and keeper sales and players kept into a later season are locked), and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
-Nothing is queued. Not built (and not asked for): the roster layout and season/playoff format are still fixed in code.
+Nothing is queued. Roster layout and season format are now editable too.

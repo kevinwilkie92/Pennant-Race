@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { ROSTER_LABELS, ROSTER_SIZE } from '@pennant/domain';
+import { rosterLabels, rosterSizeOf } from '@pennant/domain';
 import { useTeams } from '../teams';
 import type { DraftManager, DraftPlayer, DraftSale, MlbTeam, Nomination, Team } from '../api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -197,7 +197,7 @@ export function Phone(p: PhoneProps) {
                   </View>
                   <Text style={[s.num, { width: 56, color: t.green }]}>${m?.remaining ?? rules.budget}</Text>
                   <Text style={[s.num, { width: 52, color: t.gold }]}>${m?.maxBid ?? 0}</Text>
-                  <Text style={[s.num, { width: 48, color: t.text }]}>{m?.spots ?? ROSTER_SIZE}</Text>
+                  <Text style={[s.num, { width: 48, color: t.text }]}>{m?.spots ?? rosterSizeOf(rules.roster)}</Text>
                 </Pressable>
               );
             })}
@@ -289,17 +289,18 @@ export function Phone(p: PhoneProps) {
 function RosterList({ t, teamId, roster, manager, header }: {
   t: Tokens; teamId: string; roster: Roster; manager?: DraftManager; header?: boolean;
 }) {
+  const { rules } = useTeams();
   const by = new Map((roster.get(teamId) ?? []).map((r) => [r.label, r.sale]));
   const s = styles(t);
   return (
     <View>
       {header && (
         <View style={[s.row, { justifyContent: 'space-between', padding: 12, paddingBottom: 6 }]}>
-          <Text style={s.head}>ROSTER · {manager?.filled ?? 0} / {ROSTER_SIZE}</Text>
+          <Text style={s.head}>ROSTER · {manager?.filled ?? 0} / {rosterSizeOf(rules.roster)}</Text>
           <Text style={{ color: t.dim2, fontFamily: FONT.body, fontSize: 11 }}>Spent ${manager?.spent ?? 0} · Max ${manager?.maxBid ?? 0}</Text>
         </View>
       )}
-      {ROSTER_LABELS.map((label) => {
+      {rosterLabels(rules.roster).map((label) => {
         const e = by.get(label);
         return (
           <View key={label} style={[s.line, { gap: 10, paddingVertical: 8 }]}>

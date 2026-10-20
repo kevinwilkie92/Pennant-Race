@@ -1,5 +1,6 @@
 import type { Context, Hono } from 'hono';
-import { ROSTER_SIZE, canFillSlot, countsAgainstRoster, isILSlot, placePlayer } from '@pennant/domain';
+import { canFillSlot, countsAgainstRoster, isILSlot, placePlayer, rosterSizeOf, type Layout } from '@pennant/domain';
+import { loadRules } from './league-settings';
 import { requireAuth } from './auth';
 import { dropStmts, historyStmts } from './players';
 import { later, notifyTeams } from './push';
@@ -38,6 +39,7 @@ async function checkTrade(env: Env, yr: number, from: string, to: string, give: 
   if (new Set(give).size !== give.length || new Set(get).size !== get.length) return 'A player is listed twice';
   const team = await env.DB.prepare('SELECT 1 FROM team WHERE id = ?').bind(to).first();
   if (!team) return 'Unknown team';
+  const layout = (await loadRules(env)).roster, ROSTER_SIZE = rosterSizeOf(layout);
   const a = await loadRoster(env, yr, from), b = await loadRoster(env, yr, to);
   const mine = give.map((id) => a.find((e) => e.playerId === id)), theirs = get.map((id) => b.find((e) => e.playerId === id));
   if (mine.some((x) => !x)) return 'One of the players you’re offering is no longer on your roster';
@@ -52,7 +54,7 @@ async function checkTrade(env: Env, yr: number, from: string, to: string, give: 
 }
 
 /** Seats incoming players: into a vacated slot he fits if possible, otherwise by the smallest set of shifts. */
-function reseat(rest: RosterEntry[], vacated: string[], incoming: RosterEntry[]) {
+function reseat(rest: RosterEntry[], vacated: string[], incoming: RosterEntry[], layout: Layout) {
   const seated = rest.map((e) => ({ playerId: e.playerId, positions: e.positions, slot: e.slot }));
   const orig = new Map(rest.map((e) => [e.playerId, e.slot]));
   const free = [...vacated];
@@ -60,7 +62,7 @@ function reseat(rest: RosterEntry[], vacated: string[], incoming: RosterEntry[])
   for (const inc of incoming) {
     const i = free.findIndex((s) => !isILSlot(s) && canFillSlot(s, inc.positions) && !seated.some((p) => p.slot === s));
     if (i >= 0) { const slot = free.splice(i, 1)[0]; placed.set(inc.playerId, slot); seated.push({ playerId: inc.playerId, positions: inc.positions, slot }); continue; }
-    const mv = placePlayer(seated, { playerId: inc.playerId, positions: inc.positions });
+    const mv = placePlayer(seated, { playerId: inc.playerId, positions: inc.positions }, layout);
     if (!mv) return null;
     for (const [pid, slot] of mv) {
       if (pid === inc.playerId) continue;
@@ -77,10 +79,11 @@ function reseat(rest: RosterEntry[], vacated: string[], incoming: RosterEntry[])
 /** Applies an accepted trade: both rosters, lineup history, activity log, and clean-up of anything it made stale. */
 async function executeTrade(env: Env, o: Offer): Promise<string | null> {
   const yr = o.season, today = leagueToday(), now = Date.now(), db = env.DB;
+  const layout = (await loadRules(env)).roster;
   const a = await loadRoster(env, yr, o.fromTeam), b = await loadRoster(env, yr, o.toTeam);
   const aOut = a.filter((e) => o.give.includes(e.playerId)), bOut = b.filter((e) => o.get.includes(e.playerId));
-  const aSeat = reseat(a.filter((e) => !o.give.includes(e.playerId)), aOut.map((e) => e.slot), bOut);
-  const bSeat = reseat(b.filter((e) => !o.get.includes(e.playerId)), bOut.map((e) => e.slot), aOut);
+  const aSeat = reseat(a.filter((e) => !o.give.includes(e.playerId)), aOut.map((e) => e.slot), bOut, layout);
+  const bSeat = reseat(b.filter((e) => !o.get.includes(e.playerId)), bOut.map((e) => e.slot), aOut, layout);
   if (!aSeat || !bSeat) return 'No legal lineup exists after that trade';
 
   // A player can be on only one roster at a time (UNIQUE season+player), so every removal for BOTH teams runs

@@ -62,6 +62,7 @@ export function registerLineup(app: App) {
     const s = await seasonStatus(c.env, c.req.query('season'));
     if (!s) return c.json({ season: null, date: null, today: leagueToday(), editable: false, slots: [], total: 0 });
     const date = isDate(c.req.query('date')) ? c.req.query('date')! : leagueToday();
+    const layout = (await loadRules(c.env)).roster;
     const entries = await lineupAt(c.env, s.year, teamId, date);
     const locked = await lockedTeams(c.env, date);
     const pts = (await c.env.DB.prepare('SELECT player_id AS playerId, points FROM daily_points WHERE season = ? AND team_id = ? AND date = ?')
@@ -69,7 +70,7 @@ export function registerLineup(app: App) {
     const byPlayer = new Map(pts.map((p) => [p.playerId, p.points]));
     const slots = entries
       .map((e) => ({ ...e, locked: !!e.mlbTeam && locked.has(e.mlbTeam), points: byPlayer.get(e.playerId) ?? null }))
-      .sort((a, b) => slotLabelRank(a.slot) - slotLabelRank(b.slot));
+      .sort((a, b) => slotLabelRank(a.slot, layout) - slotLabelRank(b.slot, layout));
     const total = Math.round(slots.filter((e) => !e.slot.startsWith('B') && !isILSlot(e.slot)).reduce((n, e) => n + (e.points ?? 0), 0) * 100) / 100;
     return c.json({
       season: s.year, date, today: leagueToday(), total, slots,
@@ -89,7 +90,8 @@ export function registerLineup(app: App) {
     const date = body.date ?? today;
     if (!isDate(date)) return c.json({ error: 'Bad date' }, 400);
     if (date < today) return c.json({ error: 'Past days can’t be edited' }, 400);
-    if (!allLabels((await loadRules(c.env)).ilSlots).includes(body.toSlot)) return c.json({ error: 'Unknown slot' }, 400);
+    const rl = await loadRules(c.env);
+    if (!allLabels(rl.ilSlots, rl.roster).includes(body.toSlot)) return c.json({ error: 'Unknown slot' }, 400);
 
     const entries = await lineupAt(c.env, s.year, teamId, date);
     const p = entries.find((e) => e.playerId === body.playerId);

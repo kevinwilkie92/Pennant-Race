@@ -1,4 +1,5 @@
 import { assignSlots, countsAgainstRoster, slotLabelRank } from '@pennant/domain';
+import { loadRules } from './league-settings';
 import type { Env } from './types';
 
 export type RosterEntry = {
@@ -17,6 +18,7 @@ type Row = Omit<RosterEntry, 'positions'> & { positions: string | null };
  * editing exists. Either way the result is ordered hitters, pitchers, bench.
  */
 export async function loadRoster(env: Env, yr: number, teamId: string): Promise<RosterEntry[]> {
+  const layout = (await loadRules(env)).roster;
   const cols = `p.id AS playerId, p.name, p.mlb_team AS mlbTeam, p.pos, p.pos2,
        (SELECT group_concat(position) FROM player_position pp WHERE pp.player_id = p.id AND pp.season = ?1) AS positions,
        k.year AS keeperYear, ds.price, ps.status AS injury`;
@@ -35,12 +37,12 @@ export async function loadRoster(env: Env, yr: number, teamId: string): Promise<
       `SELECT '' AS slot, ${cols} FROM draft_sale x ${joins} WHERE x.season = ?1 AND x.team_id = ?2 ORDER BY x.seq`,
     ).bind(yr, teamId).all<Row>()).results;
     const withPos = sold.map((r) => ({ ...r, list: (r.positions ?? [r.pos, r.pos2].filter(Boolean).join(',')).split(',').filter(Boolean) }));
-    const slots = assignSlots(withPos.map((r) => ({ playerId: r.playerId, positions: r.list, slot: null })));
+    const slots = assignSlots(withPos.map((r) => ({ playerId: r.playerId, positions: r.list, slot: null })), layout);
     rows = withPos.flatMap((r) => (slots.has(r.playerId) ? [{ ...r, slot: slots.get(r.playerId)! }] : []));
   }
   return rows
     .map((r) => ({ ...r, positions: (r.positions ?? [r.pos, r.pos2].filter(Boolean).join(',')).split(',').filter(Boolean) }))
-    .sort((a, b) => slotLabelRank(a.slot) - slotLabelRank(b.slot));
+    .sort((a, b) => slotLabelRank(a.slot, layout) - slotLabelRank(b.slot, layout));
 }
 
 /** Player details for specific ids (used for players who aren't on a team's current roster any more). */

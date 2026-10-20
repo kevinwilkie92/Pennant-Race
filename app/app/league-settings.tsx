@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Switch, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DEFAULT_RULES, HIT_LABELS, LIMITS, MAX_LEAGUE_NAME, PIT_LABELS, PLAYOFF_TEAMS, REGULAR_WEEKS, ROSTER_SIZE, SCORE_MAX, SCORE_MIN, type LeagueRules } from '@pennant/domain';
+import { DEFAULT_RULES, HIT_LABELS, LIMITS, MAX_LEAGUE_NAME, PIT_LABELS, SCORE_MAX, SCORE_MIN, SLOT_MAX, SLOT_NAMES, SLOT_TYPES, rosterSizeOf, totalWeeks, type LeagueRules } from '@pennant/domain';
 import { api, type LeagueSettings } from '../src/api';
 import { useAuth } from '../src/auth';
 import { RequireAuth } from '../src/RequireAuth';
@@ -14,7 +14,7 @@ import { Body, Card, Display } from '../src/ui';
 
 const when = (ms: number) => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' + new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
-/** League name, who the commissioners are, sign-ups and the join code, waiver period, season tools, and the fixed rules. */
+/** League name, who the commissioners are, sign-ups and the join code, waiver period, season tools, and the league rules. */
 function Settings() {
   const { me } = useAuth();
   const { t } = useTheme();
@@ -141,15 +141,20 @@ function Settings() {
         <Body style={{ fontFamily: FONT.bodySemi }}>{s.schedule.created ? `Schedule created · week 1 starts ${s.schedule.start}` : 'No schedule yet'}</Body>
         {!s.schedule.created && boss && (
           <>
-            <Body style={{ color: t.dim, fontSize: 12, marginVertical: 6 }}>Enter the Monday week 1 starts (YYYY-MM-DD). This makes 26 weeks and the {REGULAR_WEEKS}-week round robin.</Body>
+            <Body style={{ color: t.dim, fontSize: 12, marginVertical: 6 }}>Enter the Monday week 1 starts (YYYY-MM-DD). This makes the {rules.regularWeeks}-week round robin{rules.playoffTeams ? ` plus ${totalWeeks(rules.regularWeeks, rules.playoffTeams) - rules.regularWeeks} playoff weeks` : ''} ({totalWeeks(rules.regularWeeks, rules.playoffTeams)} weeks in all).</Body>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TextInput value={start} onChangeText={setStart} autoCapitalize="none" placeholder="2027-03-29" placeholderTextColor={t.dim2} style={[input, { flex: 1 }]} />
               {btn('CREATE', () => run('sched', () => api.createSchedule(start), 'Schedule created.'), { primary: true, disabled: !/^\d{4}-\d{2}-\d{2}$/.test(start) })}
             </View>
           </>
         )}
+        {s.schedule.created && <Body style={{ color: t.dim, fontSize: 12, marginTop: 2 }}>Rules for new schedules: {rules.regularWeeks} regular weeks, {rules.playoffTeams ? `top ${rules.playoffTeams} make the playoffs` : 'no playoffs'}. A schedule already created keeps the format it was made with.</Body>}
         {boss && (
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
+            {s.schedule.created && btn('REBUILD SCHEDULE', () => {
+              const ok = typeof globalThis.confirm !== 'function' || globalThis.confirm('Delete this season’s schedule so you can create it again with the current season rules? This is refused once any scores exist.');
+              if (ok) run('sched', () => api.deleteSchedule(), 'Schedule removed. Create it again with the new dates and format.');
+            })}
             {btn('RUN WAIVERS NOW', () => run('waivers', async () => { const r = await api.processWaivers(); setMsg({ ok: true, text: `Waivers processed: ${r.won} won, ${r.failed} failed.` }); }))}
             {btn('MLB STATS FEED ›', () => router.push('/stats-feed'))}
           </View>
@@ -178,9 +183,31 @@ function Settings() {
         {([
           ['budget', 'Auction budget', '$', 25, 'Dollars each team has for the auction.'], ['minBid', 'Minimum bid', '$', 1, 'The smallest winning bid.'],
           ['maxKeepers', 'Keepers per team', '', 1, 'How many players a team may keep.'], ['keeperIncrease', 'Keeper cost increase', '$', 1, 'A Year-1 keeper costs last year’s price plus this.'],
-          ['faabBudget', 'FAAB budget', '$', 25, 'Waiver dollars per team, reset each season.'], ['ilSlots', 'Injured-list slots', '', 1, 'Spots for injured players outside the 26-man roster.'],
+          ['faabBudget', 'FAAB budget', '$', 25, 'Waiver dollars per team, reset each season.'], ['ilSlots', 'Injured-list slots', '', 1, 'Spots for injured players outside the active roster.'],
         ] as const).map(([key, label, unit, step, hint]) => (
           <NumberRule key={key} label={label} hint={hint} unit={unit} step={step} value={rules[key]} min={LIMITS[key].min} max={LIMITS[key].max} editable={boss} busy={!!busy}
+            onSave={(n) => run(`rule-${key}`, () => api.setLeagueRules({ [key]: n }), `${label} saved.`)} />
+        ))}
+      </Card>
+
+      {section(`ROSTER (${rosterSizeOf(rules.roster)} PLAYERS)`)}
+      <Card style={{ overflow: 'hidden', marginBottom: 12 }}>
+        <Body style={{ color: t.dim, fontSize: 12, padding: 12, paddingBottom: 6 }}>
+          How many of each lineup slot a team has. {boss ? 'The app refuses a change that would leave a team with more players than slots, or a player in a slot that no longer exists. Make room first.' : ''}
+        </Body>
+        {SLOT_TYPES.map((k) => (
+          <NumberRule key={k} label={SLOT_NAMES[k]} hint="" unit="" step={1} value={rules.roster[k]} min={0} max={SLOT_MAX[k]} editable={boss} busy={!!busy}
+            onSave={(n) => run(`roster-${k}`, () => api.setLeagueRules({ roster: { [k]: n } }), `${SLOT_NAMES[k]} slots saved.`)} />
+        ))}
+      </Card>
+
+      {section('SEASON FORMAT')}
+      <Card style={{ overflow: 'hidden', marginBottom: 12 }}>
+        <Body style={{ color: t.dim, fontSize: 12, padding: 12, paddingBottom: 6 }}>
+          Applies when a schedule is created. For a season already scheduled, use Rebuild schedule above (only possible before any scores exist).
+        </Body>
+        {([['regularWeeks', 'Regular-season weeks', 'Weeks of head-to-head play (a round robin, repeated as needed).'], ['playoffTeams', 'Playoff teams', 'Top seeds that qualify; 0 for no playoffs. Top seeds get byes when the field is not a power of two.']] as const).map(([key, label, hint]) => (
+          <NumberRule key={key} label={label} hint={hint} unit="" step={1} value={rules[key]} min={LIMITS[key].min} max={LIMITS[key].max} editable={boss} busy={!!busy}
             onSave={(n) => run(`rule-${key}`, () => api.setLeagueRules({ [key]: n }), `${label} saved.`)} />
         ))}
       </Card>
@@ -236,18 +263,6 @@ function Settings() {
         })()}
       </Card>
 
-      {section('BUILT IN (NOT EDITABLE)')}
-      <Card style={{ padding: 14 }}>
-        <Body style={{ color: t.dim, fontSize: 12, marginBottom: 8 }}>These shape how the app works and can only be changed in the code.</Body>
-        {[
-          ['Roster', `${ROSTER_SIZE} players: C, 1B, 2B, 3B, SS, IF, 4 OF, 2 Util, 4 SP, 4 RP and 6 on the bench`],
-          ['Season', `${REGULAR_WEEKS} regular-season weeks (a round robin), then the top ${PLAYOFF_TEAMS} teams play the playoffs`],
-        ].map(([k, v]) => (
-          <View key={k} style={{ flexDirection: 'row', gap: 10, paddingVertical: 3 }}>
-            <Body style={{ width: 70, color: t.dim, fontSize: 13 }}>{k}</Body><Body style={{ flex: 1, fontSize: 13 }}>{v}</Body>
-          </View>
-        ))}
-      </Card>
     </ScrollView>
   );
 }
@@ -265,7 +280,7 @@ function NumberRule({ label, hint, unit, step, value, min, max, editable, busy, 
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderTopWidth: 1, borderTopColor: t.line }}>
       <View style={{ flex: 1 }}>
         <Body style={{ fontFamily: FONT.bodySemi }}>{label}</Body>
-        <Body style={{ color: t.dim, fontSize: 12 }}>{hint}</Body>
+        {!!hint && <Body style={{ color: t.dim, fontSize: 12 }}>{hint}</Body>}
       </View>
       {editable && <Pressable disabled={busy || value <= min} onPress={() => bump(-step)} hitSlop={8}><Display style={{ fontSize: 24, color: value <= min ? t.dim2 : t.text }}>−</Display></Pressable>}
       {editable ? (

@@ -1,5 +1,5 @@
 import type { Hono } from 'hono';
-import { placePlayer, validateBid } from '@pennant/domain';
+import { placePlayer, rosterSizeOf, validateBid } from '@pennant/domain';
 import { requireAuth, requireCommissioner } from './auth';
 import { loadRules } from './league-settings';
 import { broadcast } from './realtime';
@@ -43,7 +43,8 @@ export function registerDraftEdit(app: App) {
     const price = b.price ?? t.sale.price;
     if (!(await c.env.DB.prepare('SELECT 1 FROM team WHERE id = ?').bind(teamId).first())) return c.json({ error: 'Unknown team' }, 400);
     const m = await money(c.env, yr, teamId, playerId);
-    const check = validateBid(price, m?.spent ?? 0, m?.filled ?? 0, await loadRules(c.env));
+    const rl = await loadRules(c.env);
+    const check = validateBid(price, m?.spent ?? 0, m?.filled ?? 0, { ...rl, rosterSize: rosterSizeOf(rl.roster) });
     if (!check.ok) return c.json({ error: check.reason }, 400);
 
     const stmts: D1PreparedStatement[] = [];
@@ -55,7 +56,7 @@ export function registerDraftEdit(app: App) {
         const stored = !!(await c.env.DB.prepare('SELECT 1 FROM roster_slot WHERE season = ? AND team_id = ? LIMIT 1').bind(yr, teamId).first());
         const me = (await loadRoster(c.env, yr, t.sale.teamId)).find((e) => e.playerId === playerId)!;
         const seated = dest.map((e) => ({ playerId: e.playerId, positions: e.positions, slot: e.slot }));
-        const plan = placePlayer(seated, { playerId, positions: me.positions });
+        const plan = placePlayer(seated, { playerId, positions: me.positions }, (await loadRules(c.env)).roster);
         if (!plan) return c.json({ error: 'That team has no roster spot he can fill' }, 409);
         stmts.push(c.env.DB.prepare('DELETE FROM roster_slot WHERE season = ? AND player_id = ?').bind(yr, playerId));
         const moved = (pid: number) => pid === playerId || !stored || seated.find((x) => x.playerId === pid)?.slot !== plan.get(pid);

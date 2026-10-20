@@ -1,5 +1,5 @@
 import type { Hono } from 'hono';
-import { DEFAULT_RULES, HIT_LABELS, LIMITS, PIT_LABELS, ROSTER_SIZE, SCORE_MAX, SCORE_MIN, applyRulesPatch, checkCommissionerChange, cleanJoinCode, cleanLeagueName, describeRulesChange, generateJoinCode, joinCodeMatches, normalizeRules, scoringChanged, type LeagueRules } from '@pennant/domain';
+import { DEFAULT_RULES, HIT_LABELS, LIMITS, PIT_LABELS, SCORE_MAX, SCORE_MIN, applyRulesPatch, assignSlots, checkCommissionerChange, rosterLabels, rosterSizeOf, cleanJoinCode, cleanLeagueName, describeRulesChange, generateJoinCode, joinCodeMatches, normalizeRules, scoringChanged, type LeagueRules } from '@pennant/domain';
 import { requireAuth, requireCommissioner } from './auth';
 import { broadcast } from './realtime';
 import type { AppVars, Env } from './types';
@@ -44,9 +44,28 @@ async function conflictWith(env: Env, next: LeagueRules): Promise<string | null>
     const { results } = await env.DB.prepare(
       `SELECT t.name, COALESCE(SUM(ds.price), 0) AS spent, COUNT(ds.id) AS filled FROM team t LEFT JOIN draft_sale ds ON ds.team_id = t.id AND ds.season = ?1 GROUP BY t.id`,
     ).bind(live).all<{ name: string; spent: number; filled: number }>();
+    const size = rosterSizeOf(next.roster);
     for (const t of results) {
-      const spots = ROSTER_SIZE - t.filled;
+      if (t.filled > size) return `${t.name} already has ${t.filled} players, more than a ${size}-player roster`;
+      const spots = size - t.filled;
       if (spots <= 0 ? t.spent > next.budget : next.budget - t.spent - (spots - 1) * next.minBid < next.minBid) return `${t.name} has already spent too much to fit a $${next.budget} budget with a $${next.minBid} minimum bid`;
+    }
+    // Lineups: every stored active slot must still exist, and drafted players not yet seated must all still fit.
+    const labels = new Set(rosterLabels(next.roster));
+    const stored = (await env.DB.prepare('SELECT x.team_id AS teamId, x.slot, t.name FROM roster_slot x JOIN team t ON t.id = x.team_id WHERE x.season = ?').bind(live).all<{ teamId: string; slot: string; name: string }>()).results;
+    const bad = stored.find((r) => !r.slot.startsWith('IL') && !labels.has(r.slot));
+    if (bad) return `A player on ${bad.name} is in slot ${bad.slot}, which that layout wouldn't have; move him first`;
+    const storedTeams = new Set(stored.map((r) => r.teamId));
+    const sales = (await env.DB.prepare(
+      `SELECT ds.team_id AS teamId, t.name, ds.player_id AS playerId,
+              COALESCE((SELECT group_concat(position) FROM player_position pp WHERE pp.player_id = ds.player_id AND pp.season = ds.season), p.pos || COALESCE(',' || p.pos2, '')) AS positions
+         FROM draft_sale ds JOIN player p ON p.id = ds.player_id JOIN team t ON t.id = ds.team_id WHERE ds.season = ? ORDER BY ds.seq`,
+    ).bind(live).all<{ teamId: string; name: string; playerId: number; positions: string }>()).results;
+    const byTeam = new Map<string, typeof sales>();
+    for (const r of sales) if (!storedTeams.has(r.teamId)) byTeam.set(r.teamId, [...(byTeam.get(r.teamId) ?? []), r]);
+    for (const [, rows] of byTeam) {
+      const seated = assignSlots(rows.map((r) => ({ playerId: r.playerId, positions: r.positions.split(',').filter(Boolean), slot: null })), next.roster);
+      if (seated.size < rows.length) return `${rows[0].name} couldn't seat all ${rows.length} of its drafted players in that layout`;
     }
     const over = await env.DB.prepare('SELECT t.name, COUNT(*) AS n FROM keeper k JOIN team t ON t.id = k.team_id WHERE k.season = ? GROUP BY k.team_id HAVING n > ? LIMIT 1').bind(live, next.maxKeepers).first<{ name: string; n: number }>();
     if (over) return `${over.name} has already kept ${over.n} players, more than ${next.maxKeepers}`;

@@ -6,6 +6,7 @@ import { describeTxn } from '../../src/Transactions';
 import { TeamAvatar } from '../../src/TeamAvatar';
 import { useAuth } from '../../src/auth';
 import { fmtPts, useLeague } from '../../src/useLeague';
+import { useTeams } from '../../src/teams';
 import { FONT, useTheme } from '../../src/theme';
 import { Body, Card, Display } from '../../src/ui';
 
@@ -46,13 +47,14 @@ function CreateSchedule({ commissioner, onDone }: { commissioner: boolean; onDon
   const { t } = useTheme();
   const [date, setDate] = useState('');
   const [err, setErr] = useState('');
+  const { rules } = useTeams();
   return (
     <Card style={{ padding: 14, marginBottom: 14 }}>
       <Display style={{ fontSize: 18 }}>No schedule yet</Display>
       {commissioner ? (
         <>
           <Body style={{ color: t.dim, marginVertical: 6, fontSize: 12 }}>
-            Enter the Monday that week 1 starts (YYYY-MM-DD). This creates 26 weeks and the 23-week round-robin.
+            Enter the Monday that week 1 starts (YYYY-MM-DD). This creates the {rules.regularWeeks}-week round-robin plus {rules.playoffTeams ? `the playoff weeks (top ${rules.playoffTeams})` : 'no playoffs'}.
           </Body>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <TextInput value={date} onChangeText={setDate} placeholder="2027-03-29" placeholderTextColor={t.dim2}
@@ -177,6 +179,7 @@ function Matchups({ lg }: { lg: ReturnType<typeof useLeague> }) {
 
 function Bracket({ byId }: { byId: Map<string, Team> }) {
   const { t } = useTheme();
+  const { rules } = useTeams();
   const [data, setData] = useState<{ seeds: string[]; matches: BracketMatch[] } | null>(null);
   useEffect(() => { api.bracket().then(setData).catch(() => setData({ seeds: [], matches: [] })); }, []);
   if (!data) return <ActivityIndicator color={t.red} />;
@@ -185,20 +188,22 @@ function Bracket({ byId }: { byId: Map<string, Team> }) {
       <Card style={{ padding: 18 }}>
         <Display style={{ fontSize: 18 }}>Playoffs</Display>
         <Body style={{ color: t.dim, marginTop: 6 }}>
-          Six teams make it, starting week 24; seeds 1 and 2 get a bye. The bracket fills in when the regular season ends.
+          {rules.playoffTeams
+            ? `${rules.playoffTeams} teams make it, starting week ${rules.regularWeeks + 1}. The bracket fills in when the regular season ends.`
+            : 'This league has no playoffs.'}
         </Body>
       </Card>
     );
   }
   const seed = (id: string | null) => (id ? data.seeds.indexOf(id) + 1 : 0);
-  const rounds = ['Quarterfinal', 'Semifinal', 'Championship', '3rd Place'];
+  const rounds = [...new Set(data.matches.map((m) => m.round))];
   return (
     <View style={{ gap: 14 }}>
       {rounds.map((round) => {
         const ms = data.matches.filter((m) => m.round === round);
         return (
           <View key={round}>
-            <Display style={{ fontSize: 13, letterSpacing: 1.5, color: t.dim, marginBottom: 6, marginLeft: 4 }}>{round.toUpperCase()}{round === 'Quarterfinal' ? ' · WK 24' : round === 'Semifinal' ? ' · WK 25' : ' · WK 26'}</Display>
+            <Display style={{ fontSize: 13, letterSpacing: 1.5, color: t.dim, marginBottom: 6, marginLeft: 4 }}>{round.toUpperCase()} · WK {ms[0]?.week}</Display>
             {ms.map((m) => (
               <Card key={m.id} style={{ marginBottom: 8, overflow: 'hidden' }}>
                 {([[m.a, m.aScore], [m.b, m.bScore]] as const).map(([id, sc], i) => (

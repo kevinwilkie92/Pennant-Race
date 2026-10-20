@@ -1,6 +1,8 @@
 // League rules shared by the API (authoritative) and the app (display/validation).
 // Source of truth: README "League rules" section.
 
+import { DEFAULT_LAYOUT, rosterLabels, rosterSizeOf, sectionLabels, slotTypeOf, labelsOfType, type Layout, type SlotType } from './layout';
+
 export const BUDGET = 300;
 export const MIN_BID = 1;
 export const MAX_KEEPERS = 5;
@@ -18,19 +20,15 @@ export const ROSTER: Slot[] = [...HIT_SLOTS, ...PIT_SLOTS, ...BENCH_SLOTS];
 export const ROSTER_SIZE = ROSTER.length; // 26
 
 /** Display labels in roster order (seed data uses these as slot ids, e.g. "OF1", "Util2", "B3"). */
-export const ROSTER_LABELS = [
-  'C', '1B', '2B', '3B', 'SS', 'IF', 'OF1', 'OF2', 'OF3', 'OF4', 'Util1', 'Util2',
-  'SP1', 'SP2', 'SP3', 'SP4', 'RP1', 'RP2', 'RP3', 'RP4',
-  'B1', 'B2', 'B3', 'B4', 'B5', 'B6',
-] as const;
+export const ROSTER_LABELS: readonly string[] = rosterLabels(DEFAULT_LAYOUT);
 
 /** Injured-list slots sit outside the 26-player roster: they hold injured players and don't count toward the limit. */
 export const MAX_IL = 4;
 export const IL_LABELS = ['IL1', 'IL2', 'IL3', 'IL4'] as const;
-export const ALL_LABELS = [...ROSTER_LABELS, ...IL_LABELS] as const;
+export const ALL_LABELS: readonly string[] = [...ROSTER_LABELS, ...IL_LABELS];
 /** IL slot labels for a league that allows `n` of them (the default is MAX_IL). */
 export const ilLabels = (n: number = MAX_IL): string[] => Array.from({ length: n }, (_, i) => `IL${i + 1}`);
-export const allLabels = (n: number = MAX_IL): string[] => [...ROSTER_LABELS, ...ilLabels(n)];
+export const allLabels = (n: number = MAX_IL, layout: Layout = DEFAULT_LAYOUT): string[] => [...rosterLabels(layout), ...ilLabels(n)];
 
 export type InjuryStatus = 'DTD' | 'IL' | 'OUT';
 export const INJURY_STATUSES: InjuryStatus[] = ['DTD', 'IL', 'OUT'];
@@ -41,11 +39,16 @@ export const isILSlot = (slot: string) => slot.startsWith('IL');
 export const countsAgainstRoster = (slot: string, status: string | null | undefined) => !(isILSlot(slot) && canUseIL(status));
 
 /** Display order: hitters (INF after SS), pitchers (SP then RP), bench, then the injured list. */
-export function slotLabelRank(label: string): number {
-  const i = (ROSTER_LABELS as readonly string[]).indexOf(label);
+export function slotLabelRank(label: string, layout: Layout = DEFAULT_LAYOUT): number {
+  const labels = layout === DEFAULT_LAYOUT ? ROSTER_LABELS : rosterLabels(layout);
+  const i = labels.indexOf(label);
   if (i !== -1) return i;
   const il = /^IL(\d+)$/.exec(label);
-  return il ? ROSTER_LABELS.length + Number(il[1]) - 1 : ROSTER_LABELS.length + 100;
+  if (il) return labels.length + Number(il[1]) - 1;
+  // A label this layout doesn't have (an old roster): keep it with its own kind rather than at the very end.
+  const t = slotTypeOf(label);
+  const same = t ? labels.filter((l) => slotTypeOf(l) === t) : [];
+  return same.length ? labels.indexOf(same[same.length - 1]) + 0.5 : labels.length + 100;
 }
 
 /** Max bid = remaining budget minus $1 held back for every other open spot. */
@@ -57,10 +60,11 @@ export function maxBid(spent: number, filled: number, budget = BUDGET, rosterSiz
 
 export type BidCheck = { ok: true } | { ok: false; reason: string };
 
-export function validateBid(price: number, spent: number, filled: number, rules: { budget: number; minBid: number } = { budget: BUDGET, minBid: MIN_BID }): BidCheck {
+export function validateBid(price: number, spent: number, filled: number, rules: { budget: number; minBid: number; rosterSize?: number } = { budget: BUDGET, minBid: MIN_BID }): BidCheck {
+  const size = rules.rosterSize ?? ROSTER_SIZE;
   if (!Number.isInteger(price) || price < rules.minBid) return { ok: false, reason: `Bid must be a whole number of at least $${rules.minBid}` };
-  if (filled >= ROSTER_SIZE) return { ok: false, reason: 'Roster is full' };
-  const max = maxBid(spent, filled, rules.budget, ROSTER_SIZE, rules.minBid);
+  if (filled >= size) return { ok: false, reason: 'Roster is full' };
+  const max = maxBid(spent, filled, rules.budget, size, rules.minBid);
   if (price > max) return { ok: false, reason: `Bid exceeds max bid of $${max}` };
   return { ok: true };
 }
@@ -159,19 +163,17 @@ export function canFillSlot(slot: string, positions: string[]): boolean {
 
 export type SlotInput = { playerId: number; positions: string[]; slot?: string | null };
 
-const BENCH_LABELS = ROSTER_LABELS.filter((l) => l.startsWith('B'));
-const PIT_LABELS = (prefix: 'SP' | 'RP') => ROSTER_LABELS.filter((l) => l.startsWith(prefix));
-
 /**
  * Assigns each player to a roster label. Players that already carry a slot keep it (archived seasons);
  * the rest are filled in draft order: exact position slot, then IF (infielders), then Util (any hitter),
  * then bench. Players who don't fit anywhere (full roster) are omitted.
  */
-export function assignSlots(players: SlotInput[]): Map<number, string> {
+export function assignSlots(players: SlotInput[], layout: Layout = DEFAULT_LAYOUT): Map<number, string> {
   const out = new Map<number, string>();
   const used = new Set<string>();
   for (const p of players) if (p.slot) { out.set(p.playerId, p.slot); used.add(p.slot); }
 
+  const of = (t: SlotType) => labelsOfType(t, layout[t]);
   const free = (labels: readonly string[]) => labels.find((l) => !used.has(l));
   for (const p of players) {
     if (p.slot) continue;
@@ -180,16 +182,16 @@ export function assignSlots(players: SlotInput[]): Map<number, string> {
     const candidates: (string | undefined)[] = [];
     if (isP) {
       const order = pos.includes('SP') ? ['SP', 'RP'] : ['RP', 'SP'];
-      for (const g of order) if (pos.includes(g) || g === order[0]) candidates.push(free(PIT_LABELS(g as 'SP' | 'RP')));
+      for (const g of order) if (pos.includes(g) || g === order[0]) candidates.push(free(of(g as 'SP' | 'RP')));
     } else {
       for (const x of pos) {
-        if (x === 'OF') candidates.push(free(['OF1', 'OF2', 'OF3', 'OF4']));
-        else if (['C', '1B', '2B', '3B', 'SS'].includes(x)) candidates.push(free([x]));
+        if (x === 'OF') candidates.push(free(of('OF')));
+        else if (['C', '1B', '2B', '3B', 'SS'].includes(x)) candidates.push(free(of(x as SlotType)));
       }
-      if (pos.some((x) => ['1B', '2B', '3B', 'SS'].includes(x))) candidates.push(free(['IF']));
-      candidates.push(free(['Util1', 'Util2']));
+      if (pos.some((x) => ['1B', '2B', '3B', 'SS'].includes(x))) candidates.push(free(of('IF')));
+      candidates.push(free(of('UTIL')));
     }
-    candidates.push(free(BENCH_LABELS));
+    candidates.push(free(of('BN')));
     const label = candidates.find(Boolean);
     if (label) { out.set(p.playerId, label); used.add(label); }
   }
@@ -199,6 +201,7 @@ export function assignSlots(players: SlotInput[]): Map<number, string> {
 export * from './season';
 export * from './waivers';
 export * from './chat';
+export * from './layout';
 
 // ------------------------------------------------------------ placing one more player
 
@@ -212,6 +215,7 @@ export type SeatedPlayer = { playerId: number; positions: string[]; slot: string
 export function placePlayer(
   current: SeatedPlayer[],
   add: { playerId: number; positions: string[] },
+  layout: Layout = DEFAULT_LAYOUT,
 ): Map<number, string> | null {
   const positions = new Map<number, string[]>(current.map((p) => [p.playerId, p.positions]));
   positions.set(add.playerId, add.positions);
@@ -221,7 +225,7 @@ export function placePlayer(
   // Prefer exact-position slots, then IF, then Util, then bench, so a hitter doesn't take the bench needlessly.
   const rank = (label: string) => (label.startsWith('B') ? 3 : label.startsWith('Util') ? 2 : label === 'IF' ? 1 : 0);
   const options = (pid: number) =>
-    ROSTER_LABELS.filter((l) => canFillSlot(l, positions.get(pid)!)).sort((a, b) => rank(a) - rank(b));
+    rosterLabels(layout).filter((l) => canFillSlot(l, positions.get(pid)!)).sort((a, b) => rank(a) - rank(b));
 
   const wantsSlotOf = new Map<number, number>();      // occupant -> the player who would take his slot
   const seen = new Set<number>([add.playerId]);

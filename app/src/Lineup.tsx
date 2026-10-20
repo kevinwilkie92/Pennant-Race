@@ -1,14 +1,11 @@
 import { Pressable, View } from 'react-native';
-import { BENCH_SLOTS, HIT_SLOTS, PIT_SLOTS, ROSTER_LABELS, ilLabels, playerSubline } from '@pennant/domain';
+import { ilLabels, playerSubline, rosterLabels, sectionLabels, slotLabelRank } from '@pennant/domain';
 import { useTeams } from './teams';
 import type { LineupSlot, RosterSlot } from './api';
 import { fmtPts } from './useLeague';
 import { FONT, useTheme } from './theme';
 import { Body, Card, Display } from './ui';
 
-const NH = HIT_SLOTS.length, NP = PIT_SLOTS.length;
-const HIT = ROSTER_LABELS.slice(0, NH), PIT = ROSTER_LABELS.slice(NH, NH + NP), BEN = ROSTER_LABELS.slice(NH + NP);
-void BENCH_SLOTS;
 
 type Row = RosterSlot & Partial<Pick<LineupSlot, 'locked' | 'points'>>;
 const BADGE: Record<string, string> = { DTD: '#d19a1f', IL: '#ec3b48', OUT: '#ec3b48' };
@@ -67,11 +64,16 @@ export function Lineup<T extends Row>({ slots, showPoints = false, onPress, sele
   // The league's IL slot count — or more, if an old roster has someone in a higher slot.
   const ilCount = Math.max(rules.ilSlots, ...slots.map((s) => (/^IL(\d+)$/.exec(s.slot)?.[1] ? Number(/^IL(\d+)$/.exec(s.slot)![1]) : 0)));
   const p = { by, showPoints, onPress: onPress as ((r: Row) => void) | undefined, selected };
+  const { hit, pit, bench } = sectionLabels(rules.roster);
+  // Players in slots this league's layout doesn't have (an older season, or a layout that has since shrunk) stay visible.
+  const known = new Set([...rosterLabels(rules.roster), ...ilLabels(ilCount)]);
+  const other = slots.map((s) => s.slot).filter((l) => !known.has(l)).sort((a, b) => slotLabelRank(a, rules.roster) - slotLabelRank(b, rules.roster));
   return (
     <>
-      <Section title="HITTERS" labels={HIT} {...p} />
-      <Section title="PITCHERS" labels={PIT} {...p} />
-      <Section title="BENCH" labels={BEN} {...p} />
+      <Section title="HITTERS" labels={hit} {...p} />
+      <Section title="PITCHERS" labels={pit} {...p} />
+      <Section title="BENCH" labels={bench} {...p} />
+      {other.length > 0 && <Section title="OTHER SLOTS" labels={other} {...p} />}
       {(onPress || slots.some((s) => s.slot.startsWith('IL'))) && <Section title="INJURED LIST" labels={ilLabels(ilCount)} {...p} />}
     </>
   );

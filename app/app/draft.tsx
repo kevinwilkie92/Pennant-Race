@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Alert, Platform, Text, View } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
+import { rosterSizeOf } from '@pennant/domain';
 import { api, type DraftPlayer } from '../src/api';
+import { useTeams } from '../src/teams';
 import { useAuth } from '../src/auth';
 import { Award } from '../src/draft/Award';
 import { Board } from '../src/draft/Board';
@@ -23,6 +25,7 @@ export default function Draft() {
 function DraftRoom({ commissioner, myTeamId }: { commissioner: boolean; myTeamId: string | null }) {
   const router = useRouter();
   const d = useDraft();
+  const { rules } = useTeams();
   const [tab, setTab] = useState<Tab>('board');
   const [browse, setBrowse] = useState<string | null>(null);
   const [award, setAward] = useState<DraftPlayer | null>(null);
@@ -42,7 +45,7 @@ function DraftRoom({ commissioner, myTeamId }: { commissioner: boolean; myTeamId
     <View style={{ flex: 1, backgroundColor: D.bg }}>
       <Nav
         tab={tab} setTab={setTab} seasons={d.seasons} season={d.season} setSeason={(y) => { d.setSeason(y); setBrowse(null); }}
-        drafted={d.state?.sales.length ?? 0} total={d.teams.length * 26} live={d.live} commissioner={commissioner} isLive={isLive}
+        drafted={d.state?.sales.length ?? 0} total={d.teams.length * rosterSizeOf(rules.roster)} live={d.live} commissioner={commissioner} isLive={isLive}
         onUndo={() => guard(() => api.undo().then(d.refresh))} onBack={() => router.back()}
         pushYear={d.seasons.some((s) => s.status === 'live') || d.seasons.length === 0 ? null : Math.max(...d.seasons.map((s) => s.year)) + 1}
         onPush={() => {
