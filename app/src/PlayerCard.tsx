@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, View } from 'react-native';
-import { api, type PlayerCardData } from './api';
+import { battingAvg, era, inningsFromOuts } from '@pennant/domain';
+import { api, type PlayerCardData, type PlayerCareer } from './api';
 import { FONT, useTheme } from './theme';
 import { Body, Card, Display } from './ui';
 
@@ -20,8 +21,9 @@ const PIT_COLS: [string, (t: Record<string, number>, g: number) => string | numb
 export function PlayerCard({ playerId, teamName, onClose }: { playerId: number | null; teamName: (id: string) => string; onClose: () => void }) {
   const { t } = useTheme();
   const [d, setD] = useState<PlayerCardData | null>(null);
-  const [tab, setTab] = useState<'season' | 'history'>('season');
-  useEffect(() => { setD(null); setTab('season'); if (playerId != null) api.playerCard(playerId).then(setD).catch(() => setD(null)); }, [playerId]);
+  const [tab, setTab] = useState<'season' | 'career' | 'history'>('season');
+  const [career, setCareer] = useState<PlayerCareer | null | 'error'>(null);
+  useEffect(() => { setD(null); setCareer(null); setTab('season'); if (playerId != null) api.playerCard(playerId).then(setD).catch(() => setD(null)); }, [playerId]);
   if (playerId == null) return null;
 
   const pts = d ? [...d.points].reverse() : [];                       // oldest → newest
@@ -47,17 +49,19 @@ export function PlayerCard({ playerId, teamName, onClose }: { playerId: number |
                 {d.injury && <Body style={{ color: t.loss, fontFamily: FONT.bodyBold, fontSize: 13, marginTop: 4 }}>{d.injury.status}{d.injury.note ? ` — ${d.injury.note}` : ''}</Body>}
               </View>
               <View style={{ flexDirection: 'row', gap: 6, paddingHorizontal: 16, marginBottom: 8 }}>
-                {([['season', 'Season'], ['history', 'History']] as const).map(([k, label]) => {
+                {([['season', 'Season'], ['career', 'Career'], ['history', 'History']] as const).map(([k, label]) => {
                   const on = tab === k;
                   return (
-                    <Pressable key={k} onPress={() => setTab(k)} style={{ paddingHorizontal: 16, paddingVertical: 7, borderRadius: t.radius.chip, borderWidth: 1, borderColor: on ? t.red : t.line, backgroundColor: on ? t.red : 'transparent' }}>
+                    <Pressable key={k} onPress={() => { setTab(k); if (k === 'career' && career === null && playerId != null) api.playerCareer(playerId).then(setCareer).catch(() => setCareer('error')); }} style={{ paddingHorizontal: 16, paddingVertical: 7, borderRadius: t.radius.chip, borderWidth: 1, borderColor: on ? t.red : t.line, backgroundColor: on ? t.red : 'transparent' }}>
                       <Display style={{ fontSize: 13, color: on ? '#fff' : t.dim }}>{label}</Display>
                     </Pressable>
                   );
                 })}
               </View>
               <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 4 }}>
-                {tab === 'season' ? (
+                {tab === 'career' ? (
+                  <CareerTable data={career} />
+                ) : tab === 'season' ? (
                   <>
                     <Card style={{ padding: 14, marginBottom: 12 }}>
                       <Body style={{ color: t.dim, fontFamily: FONT.bodyBold, fontSize: 11, letterSpacing: 1 }}>FANTASY POINTS</Body>
@@ -129,5 +133,52 @@ export function PlayerCard({ playerId, teamName, onClose }: { playerId: number |
         </Pressable>
       </Pressable>
     </Modal>
+  );
+}
+
+
+type Col = { label: string; w: number; f: (st: Record<string, number>) => string | number };
+const HIT_CAREER: Col[] = [
+  { label: 'G', w: 40, f: (s) => s.g }, { label: 'AVG', w: 52, f: (s) => battingAvg(s.h, s.ab) }, { label: 'HR', w: 40, f: (s) => s.hr },
+  { label: 'R', w: 40, f: (s) => s.r }, { label: 'RBI', w: 44, f: (s) => s.rbi }, { label: 'SB', w: 38, f: (s) => s.sb }, { label: 'BB', w: 40, f: (s) => s.bb },
+];
+const PIT_CAREER: Col[] = [
+  { label: 'G', w: 36, f: (s) => s.g }, { label: 'GS', w: 36, f: (s) => s.gs }, { label: 'IP', w: 52, f: (s) => inningsFromOuts(s.outs) }, { label: 'W', w: 34, f: (s) => s.w },
+  { label: 'QS', w: 36, f: (s) => s.qs }, { label: 'SV', w: 36, f: (s) => s.sv }, { label: 'ERA', w: 48, f: (s) => era(s.er, s.outs) }, { label: 'K', w: 40, f: (s) => s.k },
+];
+
+/** Season-by-season MLB career with fantasy points under this league's scoring. */
+function CareerTable({ data }: { data: PlayerCareer | null | 'error' }) {
+  const { t } = useTheme();
+  if (data === null) return <ActivityIndicator color={t.red} style={{ margin: 20 }} />;
+  if (data === 'error') return <Body style={{ color: t.dim, padding: 14 }}>Couldn't load career stats right now. Try again in a moment.</Body>;
+  if (!data.available) return <Body style={{ color: t.dim, padding: 14 }}>{data.reason ?? 'No career stats available.'}</Body>;
+  const cols = data.role === 'P' ? PIT_CAREER : HIT_CAREER;
+  const cell = (w: number, text: string | number, o: { bold?: boolean; color?: string; right?: boolean } = {}) => (
+    <Body style={{ width: w, textAlign: o.right === false ? 'left' : 'right', fontSize: 13, fontFamily: o.bold ? FONT.bodyBold : FONT.body, color: o.color ?? t.text }}>{text}</Body>
+  );
+  const row = (key: string, year: string, team: string, st: Record<string, number>, pts: number, bold = false) => (
+    <View key={key} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 7, paddingHorizontal: 10, gap: 6, borderTopWidth: 1, borderTopColor: t.line }}>
+      {cell(40, year, { bold, right: false })}{cell(50, team, { bold, right: false, color: t.dim })}
+      {cell(52, pts, { bold: true, color: pts < 0 ? t.loss : t.gold })}
+      {cols.map((c) => <View key={c.label}>{cell(c.w, c.f(st), { bold })}</View>)}
+    </View>
+  );
+  return (
+    <Card style={{ overflow: 'hidden' }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator>
+        <View>
+          <View style={{ flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 10, gap: 6 }}>
+            {cell(40, 'YR', { right: false, color: t.dim2, bold: true })}{cell(50, 'TM', { right: false, color: t.dim2, bold: true })}{cell(52, 'PTS', { color: t.dim2, bold: true })}
+            {cols.map((c) => <View key={c.label}>{cell(c.w, c.label, { color: t.dim2, bold: true })}</View>)}
+          </View>
+          {[...data.seasons].reverse().map((s) => row(String(s.season), String(s.season), s.teams.length > 1 ? `${s.teams.length} tms` : s.teams[0] ?? '', s.stats, s.points))}
+          {row('car', 'CAR', '', data.totals.stats, data.totals.points, true)}
+        </View>
+      </ScrollView>
+      <Body style={{ color: t.dim2, fontSize: 11, padding: 10, borderTopWidth: 1, borderTopColor: t.line }}>
+        PTS is fantasy points under this league's scoring{data.role === 'P' ? ' (quality starts counted from game logs)' : ''}. Regular-season MLB only.{data.stale ? ' Showing a saved copy: MLB could not be reached.' : ''}
+      </Body>
+    </Card>
   );
 }

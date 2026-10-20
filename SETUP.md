@@ -162,6 +162,15 @@ A person can have up to 10 devices; a device belongs to whoever signed in on it 
 - **Waiver period**, **schedule** (create the season calendar and round robin from a Monday start date), **Run waivers now**, and a shortcut to the **MLB stats feed**.
 - **The rules** (roster size, $300 budget, 5 keepers, FAAB, scoring tables, playoff size) are displayed for reference but are built into the app and are not editable here; changing them means changing the code.
 
+## Career stats
+
+The player card's **Career** tab lists every MLB season (regular season only) with the team(s), the main counting stats, and **PTS: that season's fantasy points under this league's scoring**, plus a career total. A player traded mid-season gets one row with
+"2 tms" and the all-teams numbers. Two-way players (Ohtani) get hitting on the batter card and pitching on the pitcher card. It needs the player to be matched to MLB (see the stats feed setup); otherwise the tab says so.
+
+How it's computed: MLB's year-by-year totals, scored with the league rules. MLB's season totals don't include **quality starts**, so for pitchers the app counts them from each season's game log (one request per season, the first time a card is opened) and remembers finished seasons for good,
+so the +5 per quality start is exact. Each card's career is cached for 12 hours; if MLB can't be reached the last saved copy is shown with a note. Spot-checked against live data (for example Drew Rasmussen's 2026: 516 outs, 18 quality starts).
+This covers real MLB history, so it includes seasons from before your league existed, and it does not depend on the stats feed having been running.
+
 ## Matchups, standings and playoffs
 
 The commissioner opens **League** and enters the Monday week 1 starts; that creates 26 Monday–Sunday weeks and a
@@ -240,9 +249,9 @@ and the claim and trade roster-limit checks use the active count. IL players sho
 Injury status comes from MLB's injured list via the stats feed; the commissioner can also set it by hand (status chips in the lineup sheet) and a hand-set status is never overwritten.
 
 **Player card:** tap a player in the Players tab (or *Player card* in the lineup sheet): owner or waiver status, injury, a points-by-day chart (negative days drawn
-downward in red) built from `daily_points`, and the full history — draft/keeper price, waiver adds, drops and trades. It also shows this season's totals and recent games from the stats feed (career totals aren't built).
+downward in red) built from `daily_points`, and the full history — draft/keeper price, waiver adds, drops and trades. It also shows this season's totals and recent games from the stats feed and a **Career** tab (below).
 
-Not built yet: career stats, 15/60-day IL types, a commissioner screen for league settings beyond the waiver period.
+Not built yet: 15/60-day IL types.
 
 ## League chat and direct messages
 
@@ -323,4 +332,4 @@ the TV draft board, the phone draft companion, the keepers picker + season push,
 bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, group chats, read receipts, message search, push notifications (see its section), league settings with multiple commissioners (see its section), replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, the live "on the block" nomination (the commissioner's DRAFT click puts the player, leader and bid on the TV board and every phone's NOW BIDDING strip; it clears on cancel, sale or a new hat draw, expires after 15 minutes, and late joiners get it on connect), the MLB stats feed (see its section), Google/Apple sign-in (see its section), archived-draft corrections (on a FINAL season's Draft Log the commissioner can change a price, change who drafted a player, or remove a sale; a team change also moves him on that team's frozen roster, the $300 budget and roster-room rules still apply, and keeper sales and players kept into a later season are locked), and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
-Nothing is queued; the remaining ideas are career stats, 15/60-day IL types, and making the fixed rules (budget, roster size, scoring) editable.
+Nothing is queued; the remaining ideas are 15/60-day IL types and making the fixed rules (budget, roster size, scoring) editable.

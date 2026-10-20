@@ -85,6 +85,11 @@ export type PlayerCardData = {
   points: { date: string; teamId: string; slot: string; points: number }[]; seasonPoints: number;
   stats: PlayerStats | null;
 };
+export type PlayerCareer = {
+  available: boolean; reason?: string; role: 'H' | 'P'; stale?: boolean; fetchedAt: number;
+  seasons: { season: number; teams: string[]; stats: Record<string, number>; points: number }[];
+  totals: { stats: Record<string, number>; points: number };
+};
 export type PlayerStats = {
   season: number; role: 'H' | 'P'; games: number; points: number; totals: Record<string, number>;
   log: { date: string; points: number; summary: string }[];
@@ -200,6 +205,7 @@ export const api = {
   feedRefresh: () => call<{ injuries: { set: number; cleared: number }; eligibility: { added: number } }>('/stats/refresh', { method: 'POST' }),
   feedSetMlbId: (playerId: number, mlbId: number | null) =>
     call<{ ok: true }>(`/stats/players/${playerId}/mlb-id`, { method: 'PUT', body: JSON.stringify({ mlbId }) }),
+  playerCareer: (id: number) => call<PlayerCareer>(`/players/${id}/career`),
   playerCard: (id: number) => call<PlayerCardData>(`/players/${id}/card`),
   leagueSettings: () => call<LeagueSettings>('/league/settings'),
   setLeagueSettings: (b: { name?: string; waiverDays?: number; signupsOpen?: boolean }) => call<{ name: string; waiverDays: number; signupsOpen: boolean }>('/league/settings', { method: 'PUT', body: JSON.stringify(b) }),

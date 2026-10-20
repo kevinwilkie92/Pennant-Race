@@ -1,5 +1,5 @@
 import type { Hono } from 'hono';
-import { gameStat, isInjuredListCode, matchPlayers, normalizeName, roleOf, summarize, hitterEligibility, pitcherEligibility, type BoxBatting, type BoxPitching, type Role } from '@pennant/domain';
+import { careerTotals, countQualityStarts, hittingSeason, pickSeasons, pitchingSeason, gameStat, isInjuredListCode, matchPlayers, normalizeName, roleOf, summarize, hitterEligibility, pitcherEligibility, type BoxBatting, type BoxPitching, type Role, type Split } from '@pennant/domain';
 import { requireAuth, requireCommissioner } from './auth';
 import { lineupAt } from './lineup';
 import { ownerMap } from './roster';
@@ -318,6 +318,12 @@ export function registerStats(app: App) {
     catch (e) { return c.json({ error: e instanceof Error ? e.message : 'The MLB stats service did not answer' }, 502); }
   });
 
+  app.get('/players/:id/career', requireAuth, async (c) => {
+    const r = await playerCareer(c.env, Number(c.req.param('id')));
+    if ('error' in r) return c.json({ error: r.error }, r.error === 'Player not found' ? 404 : 502);
+    return c.json(r);
+  });
+
   // Leaders / trending: fantasy points over a window, with who owns each player.
   app.get('/players/stats', requireAuth, async (c) => {
     const win = c.req.query('window') ?? 'season';
@@ -359,4 +365,65 @@ export async function playerStats(env: Env, id: number) {
     points: Math.round(results.reduce((n, g) => n + g.points, 0) * 10) / 10, totals,
     log: results.slice(0, 15).map((g) => ({ date: g.date, points: g.points, summary: summarize({ role: g.role, line: JSON.parse(g.line) }) })),
   };
+}
+
+// ------------------------------------------------------------------ career stats
+
+const CAREER_TTL_MS = 12 * 3600_000;
+type CareerSeason = { season: number; teams: string[]; stats: Record<string, number>; points: number };
+export type Career = { available: boolean; reason?: string; role: Role; seasons: CareerSeason[]; totals: { stats: Record<string, number>; points: number }; fetchedAt: number; stale?: boolean };
+
+async function mapLimit<T, R>(xs: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(xs.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(n, xs.length) }, async () => { while (next < xs.length) { const i = next++; out[i] = await fn(xs[i]); } }));
+  return out;
+}
+
+/** Quality starts in each season for a pitcher: counted from the game log once, then remembered. */
+async function seasonQuality(env: Env, mlbId: number, seasons: number[]): Promise<Map<number, number>> {
+  const thisYear = Number(leagueToday().slice(0, 4));
+  const cached = new Map((await env.DB.prepare('SELECT season, qs, final, fetched_at AS at FROM qs_cache WHERE mlb_id = ?').bind(mlbId).all<{ season: number; qs: number; final: number; at: number }>()).results.map((r) => [r.season, r]));
+  const need = seasons.filter((y) => { const c = cached.get(y); return !c || (!c.final && Date.now() - c.at > CAREER_TTL_MS); });
+  const fresh = await mapLimit(need, 5, async (y) => {
+    const r = await mlb<{ stats: { splits: { stat: Record<string, unknown> }[] }[] }>(env, `/people/${mlbId}/stats?stats=gameLog&season=${y}&group=pitching&sportId=1`);
+    return [y, countQualityStarts((r.stats[0]?.splits ?? []).map((x) => x.stat))] as const;
+  });
+  for (const [y, qs] of fresh) {
+    await env.DB.prepare('INSERT INTO qs_cache (mlb_id, season, qs, final, fetched_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(mlb_id, season) DO UPDATE SET qs = excluded.qs, final = excluded.final, fetched_at = excluded.fetched_at')
+      .bind(mlbId, y, qs, y < thisYear ? 1 : 0, Date.now()).run();
+    cached.set(y, { season: y, qs, final: y < thisYear ? 1 : 0, at: Date.now() });
+  }
+  return new Map(seasons.map((y) => [y, cached.get(y)?.qs ?? 0]));
+}
+
+/** A player's MLB career, season by season, scored with the league's rules. */
+export async function playerCareer(env: Env, playerId: number): Promise<Career | { error: string }> {
+  const p = await env.DB.prepare('SELECT name, pos, mlb_id AS mlbId FROM player WHERE id = ?').bind(playerId).first<{ name: string; pos: string; mlbId: number | null }>();
+  if (!p) return { error: 'Player not found' };
+  const role = roleOf(p);
+  const empty = (reason: string): Career => ({ available: false, reason, role, seasons: [], totals: { stats: {}, points: 0 }, fetchedAt: Date.now() });
+  if (p.mlbId == null) return empty('This player has not been matched to MLB yet.');
+
+  const hit = await env.DB.prepare('SELECT json, fetched_at AS at FROM career_cache WHERE mlb_id = ? AND role = ?').bind(p.mlbId, role).first<{ json: string; at: number }>();
+  if (hit && Date.now() - hit.at < CAREER_TTL_MS) return JSON.parse(hit.json) as Career;
+  try {
+    const group = role === 'P' ? 'pitching' : 'hitting';
+    const r = await mlb<{ stats: { splits: Split[] }[] }>(env, `/people/${p.mlbId}/stats?stats=yearByYear&group=${group}&sportId=1`);
+    const rows = pickSeasons(r.stats[0]?.splits ?? []);
+    if (!rows.length) return empty('No major-league stats yet.');
+    const teams = await mlbTeams(env, Number(leagueToday().slice(0, 4)));
+    const qs = role === 'P' ? await seasonQuality(env, p.mlbId, rows.map((x) => x.season)) : new Map<number, number>();
+    const seasons: CareerSeason[] = rows.map((x) => ({
+      season: x.season, teams: x.teamIds.map((id) => teams.get(id) ?? '?'),
+      ...(role === 'P' ? pitchingSeason(x.stat, qs.get(x.season) ?? 0) : hittingSeason(x.stat)),
+    }));
+    const out: Career = { available: true, role, seasons, totals: careerTotals(seasons), fetchedAt: Date.now() };
+    await env.DB.prepare('INSERT INTO career_cache (mlb_id, role, json, fetched_at) VALUES (?, ?, ?, ?) ON CONFLICT(mlb_id, role) DO UPDATE SET json = excluded.json, fetched_at = excluded.fetched_at')
+      .bind(p.mlbId, role, JSON.stringify(out), out.fetchedAt).run();
+    return out;
+  } catch (e) {
+    if (hit) return { ...(JSON.parse(hit.json) as Career), stale: true };                // MLB is down: the last good copy beats nothing
+    return { error: e instanceof Error ? e.message : 'The MLB stats service did not answer' };
+  }
 }
