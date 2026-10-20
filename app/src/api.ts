@@ -114,6 +114,8 @@ export type ChatMessage = {
   replyTo: { id: number; teamId?: string; body?: string; hasImage?: boolean; deleted?: boolean } | null;
 };
 export type DmConversation = { team: string; unread: number; last: { id: number; fromMe: boolean; body: string; hasImage: boolean; createdAt: number } };
+export type { LeagueRules } from '@pennant/domain';
+import type { LeagueRules } from '@pennant/domain';
 export type LeagueSettings = {
   name: string; waiverDays: number; signupsOpen: boolean; season: number | null; schedule: { created: boolean; start: string | null };
   commissioners: { teamId: string; name: string; owner: string; isCommissioner: boolean; hasAccount: boolean }[];
@@ -208,6 +210,8 @@ export const api = {
   playerCareer: (id: number) => call<PlayerCareer>(`/players/${id}/career`),
   playerCard: (id: number) => call<PlayerCardData>(`/players/${id}/card`),
   leagueSettings: () => call<LeagueSettings>('/league/settings'),
+  leagueRules: () => call<{ rules: LeagueRules; defaults: LeagueRules }>('/league/rules'),
+  setLeagueRules: (b: Record<string, unknown>) => call<{ rules: LeagueRules; changed: string[]; rescored: boolean }>('/league/rules', { method: 'PUT', body: JSON.stringify(b) }),
   setLeagueSettings: (b: { name?: string; waiverDays?: number; signupsOpen?: boolean }) => call<{ name: string; waiverDays: number; signupsOpen: boolean }>('/league/settings', { method: 'PUT', body: JSON.stringify(b) }),
   setJoinCode: (code?: string) => call<{ code: string; source: string }>('/league/join-code', { method: 'POST', body: JSON.stringify(code ? { code } : {}) }),
   resetJoinCode: () => call<{ code: string; source: string }>('/league/join-code', { method: 'DELETE' }),

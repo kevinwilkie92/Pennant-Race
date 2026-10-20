@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Switch, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BUDGET, HIT_SCORING, MAX_IL, MAX_KEEPERS, MAX_LEAGUE_NAME, PIT_SCORING, PLAYOFF_TEAMS, REGULAR_WEEKS, ROSTER_SIZE } from '@pennant/domain';
+import { DEFAULT_RULES, HIT_LABELS, LIMITS, MAX_LEAGUE_NAME, PIT_LABELS, PLAYOFF_TEAMS, REGULAR_WEEKS, ROSTER_SIZE, SCORE_MAX, SCORE_MIN, type LeagueRules } from '@pennant/domain';
 import { api, type LeagueSettings } from '../src/api';
 import { useAuth } from '../src/auth';
 import { RequireAuth } from '../src/RequireAuth';
@@ -18,7 +18,8 @@ const when = (ms: number) => new Date(ms).toLocaleDateString('en-US', { month: '
 function Settings() {
   const { me } = useAuth();
   const { t } = useTheme();
-  const { byId } = useTeams();
+  const { byId, rules } = useTeams();
+  const [scoreEdit, setScoreEdit] = useState<{ hit: Record<string, string>; pit: Record<string, string> }>({ hit: {}, pit: {} });
   const { subscribe } = useRealtime();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -169,23 +170,112 @@ function Settings() {
         </>
       )}
 
-      {section('THE RULES (FIXED)')}
-      <Card style={{ padding: 14 }}>
-        <Body style={{ color: t.dim, fontSize: 12, marginBottom: 8 }}>These are built into the app and can't be changed here.</Body>
-        {[
-          ['Roster', `${ROSTER_SIZE} players, plus up to ${MAX_IL} on the injured list`], ['Auction budget', `$${BUDGET} per team, $1 minimum bid`], ['Keepers', `Up to ${MAX_KEEPERS} per team`],
-          ['FAAB', `$${BUDGET} per season`], ['Season', `${REGULAR_WEEKS} regular-season weeks, top ${PLAYOFF_TEAMS} make the playoffs`],
-        ].map(([k, v]) => (
-          <View key={k} style={{ flexDirection: 'row', gap: 10, paddingVertical: 3 }}>
-            <Body style={{ width: 110, color: t.dim, fontSize: 13 }}>{k}</Body><Body style={{ flex: 1, fontSize: 13 }}>{v}</Body>
+      {section('LEAGUE RULES')}
+      <Card style={{ overflow: 'hidden', marginBottom: 12 }}>
+        <Body style={{ color: t.dim, fontSize: 12, padding: 12, paddingBottom: 6 }}>
+          {boss ? 'Change a number and it saves when you leave the box or tap − / +. The app refuses a change that would break something already in progress (for example a budget below what a team has spent).' : 'These are the league’s rules. Only commissioners can change them.'}
+        </Body>
+        {([
+          ['budget', 'Auction budget', '$', 25, 'Dollars each team has for the auction.'], ['minBid', 'Minimum bid', '$', 1, 'The smallest winning bid.'],
+          ['maxKeepers', 'Keepers per team', '', 1, 'How many players a team may keep.'], ['keeperIncrease', 'Keeper cost increase', '$', 1, 'A Year-1 keeper costs last year’s price plus this.'],
+          ['faabBudget', 'FAAB budget', '$', 25, 'Waiver dollars per team, reset each season.'], ['ilSlots', 'Injured-list slots', '', 1, 'Spots for injured players outside the 26-man roster.'],
+        ] as const).map(([key, label, unit, step, hint]) => (
+          <NumberRule key={key} label={label} hint={hint} unit={unit} step={step} value={rules[key]} min={LIMITS[key].min} max={LIMITS[key].max} editable={boss} busy={!!busy}
+            onSave={(n) => run(`rule-${key}`, () => api.setLeagueRules({ [key]: n }), `${label} saved.`)} />
+        ))}
+      </Card>
+
+      {section('SCORING')}
+      <Card style={{ padding: 14, marginBottom: 12 }}>
+        <Body style={{ color: t.dim, fontSize: 12, marginBottom: 8 }}>
+          Points per stat (negative values are penalties; up to 2 decimals, between {SCORE_MIN} and {SCORE_MAX}).
+          {boss ? ' Saving recalculates every saved score, including past weeks and past seasons, so standings and matchup results can change.' : ''}
+        </Body>
+        {([['hit', 'HITTING', HIT_LABELS], ['pit', 'PITCHING', PIT_LABELS]] as const).map(([grp, title, labels]) => (
+          <View key={grp} style={{ marginBottom: 6 }}>
+            <Body style={{ color: t.dim, fontFamily: FONT.bodyBold, fontSize: 11, letterSpacing: 1, marginVertical: 6 }}>{title}</Body>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {Object.entries(labels).map(([k, label]) => {
+                const cur = (rules[grp] as Record<string, number>)[k];
+                const typed = scoreEdit[grp][k];
+                const shown = typed ?? String(cur);
+                const changed = typed !== undefined && Number(typed) !== cur;
+                return (
+                  <View key={k} style={{ width: 128, borderWidth: 1, borderColor: changed ? t.gold : t.line, borderRadius: t.radius.button, padding: 8 }}>
+                    <Body style={{ color: t.dim, fontSize: 11 }} numberOfLines={1}>{label}</Body>
+                    {boss ? (
+                      <TextInput value={shown} onChangeText={(v) => setScoreEdit((e) => ({ ...e, [grp]: { ...e[grp], [k]: v.replace(/[^0-9.-]/g, '') } }))} keyboardType="numbers-and-punctuation"
+                        style={{ color: t.text, fontFamily: FONT.num, fontSize: 18, padding: 0, marginTop: 2 }} />
+                    ) : <Display style={{ fontSize: 18 }}>{cur}</Display>}
+                  </View>
+                );
+              })}
+            </View>
           </View>
         ))}
-        <Body style={{ color: t.dim, fontFamily: FONT.bodyBold, fontSize: 11, letterSpacing: 1, marginTop: 10 }}>HITTING</Body>
-        <Body style={{ fontSize: 13 }}>{Object.entries(HIT_SCORING).map(([k, v]) => `${k} ${v}`).join(' · ')}</Body>
-        <Body style={{ color: t.dim, fontFamily: FONT.bodyBold, fontSize: 11, letterSpacing: 1, marginTop: 8 }}>PITCHING</Body>
-        <Body style={{ fontSize: 13 }}>{Object.entries(PIT_SCORING).map(([k, v]) => `${k} ${v}`).join(' · ')}</Body>
+        {boss && (() => {
+          const patch = (['hit', 'pit'] as const).reduce<Record<string, Record<string, number>>>((o, g) => {
+            const changes = Object.fromEntries(Object.entries(scoreEdit[g]).filter(([k, v]) => v !== '' && v !== '-' && v !== '.' && Number(v) !== (rules[g] as Record<string, number>)[k]).map(([k, v]) => [k, Number(v)]));
+            return Object.keys(changes).length ? { ...o, [g]: changes } : o;
+          }, {});
+          const dirty = Object.keys(patch).length > 0;
+          const isDefault = JSON.stringify([rules.hit, rules.pit]) === JSON.stringify([DEFAULT_RULES.hit, DEFAULT_RULES.pit]);
+          return (
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+              {btn('SAVE SCORING', () => {
+                const ok = typeof globalThis.confirm !== 'function' || globalThis.confirm('Change the scoring? Every saved score, past weeks and seasons included, will be recalculated.');
+                if (ok) run('scoring', async () => { const r = await api.setLeagueRules(patch); setScoreEdit({ hit: {}, pit: {} }); setMsg({ ok: true, text: `Scoring saved and all scores recalculated (${r.changed.length} change${r.changed.length === 1 ? '' : 's'}).` }); });
+              }, { primary: true, disabled: !dirty })}
+              {dirty && btn('DISCARD', () => setScoreEdit({ hit: {}, pit: {} }))}
+              {btn('RESET TO DEFAULTS', () => {
+                const ok = typeof globalThis.confirm !== 'function' || globalThis.confirm('Put the scoring back to the league’s original values? All saved scores will be recalculated.');
+                if (ok) run('scoring', async () => { await api.setLeagueRules({ reset: 'scoring' }); setScoreEdit({ hit: {}, pit: {} }); setMsg({ ok: true, text: 'Scoring reset to the defaults and all scores recalculated.' }); });
+              }, { disabled: isDefault && !dirty })}
+            </View>
+          );
+        })()}
+      </Card>
+
+      {section('BUILT IN (NOT EDITABLE)')}
+      <Card style={{ padding: 14 }}>
+        <Body style={{ color: t.dim, fontSize: 12, marginBottom: 8 }}>These shape how the app works and can only be changed in the code.</Body>
+        {[
+          ['Roster', `${ROSTER_SIZE} players: C, 1B, 2B, 3B, SS, IF, 4 OF, 2 Util, 4 SP, 4 RP and 6 on the bench`],
+          ['Season', `${REGULAR_WEEKS} regular-season weeks (a round robin), then the top ${PLAYOFF_TEAMS} teams play the playoffs`],
+        ].map(([k, v]) => (
+          <View key={k} style={{ flexDirection: 'row', gap: 10, paddingVertical: 3 }}>
+            <Body style={{ width: 70, color: t.dim, fontSize: 13 }}>{k}</Body><Body style={{ flex: 1, fontSize: 13 }}>{v}</Body>
+          </View>
+        ))}
       </Card>
     </ScrollView>
+  );
+}
+
+/** A rule with a number box and − / + buttons; saves when you leave the box or tap a button. */
+function NumberRule({ label, hint, unit, step, value, min, max, editable, busy, onSave }: {
+  label: string; hint: string; unit: string; step: number; value: number; min: number; max: number; editable: boolean; busy: boolean; onSave: (n: number) => void;
+}) {
+  const { t } = useTheme();
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const commit = () => { const n = Number(text); if (text.trim() === '' || !Number.isInteger(n)) setText(String(value)); else if (n !== value) onSave(n); };
+  const bump = (d: number) => { const n = Math.min(max, Math.max(min, value + d)); if (n !== value) onSave(n); };
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderTopWidth: 1, borderTopColor: t.line }}>
+      <View style={{ flex: 1 }}>
+        <Body style={{ fontFamily: FONT.bodySemi }}>{label}</Body>
+        <Body style={{ color: t.dim, fontSize: 12 }}>{hint}</Body>
+      </View>
+      {editable && <Pressable disabled={busy || value <= min} onPress={() => bump(-step)} hitSlop={8}><Display style={{ fontSize: 24, color: value <= min ? t.dim2 : t.text }}>−</Display></Pressable>}
+      {editable ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: t.line, borderRadius: t.radius.button, paddingHorizontal: 8, minWidth: 70 }}>
+          {!!unit && <Body style={{ color: t.dim }}>{unit}</Body>}
+          <TextInput value={text} onChangeText={(v) => setText(v.replace(/[^0-9]/g, ''))} onBlur={commit} onSubmitEditing={commit} keyboardType="number-pad" style={{ color: t.text, fontFamily: FONT.num, fontSize: 18, paddingVertical: 6, minWidth: 40, textAlign: 'right' }} />
+        </View>
+      ) : <Display style={{ fontSize: 18 }}>{unit}{value}</Display>}
+      {editable && <Pressable disabled={busy || value >= max} onPress={() => bump(step)} hitSlop={8}><Display style={{ fontSize: 24, color: value >= max ? t.dim2 : t.text }}>+</Display></Pressable>}
+    </View>
   );
 }
 

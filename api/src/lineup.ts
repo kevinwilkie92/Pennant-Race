@@ -1,5 +1,6 @@
 import type { Hono } from 'hono';
-import { ALL_LABELS, canFillSlot, canUseIL, isILSlot } from '@pennant/domain';
+import { allLabels, canFillSlot, canUseIL, isILSlot, slotLabelRank } from '@pennant/domain';
+import { loadRules } from './league-settings';
 import { requireAuth } from './auth';
 import { loadRoster, materializeStmts, playerEntries, type RosterEntry } from './roster';
 import { isoNow, leagueToday } from './time';
@@ -68,7 +69,7 @@ export function registerLineup(app: App) {
     const byPlayer = new Map(pts.map((p) => [p.playerId, p.points]));
     const slots = entries
       .map((e) => ({ ...e, locked: !!e.mlbTeam && locked.has(e.mlbTeam), points: byPlayer.get(e.playerId) ?? null }))
-      .sort((a, b) => (ALL_LABELS as readonly string[]).indexOf(a.slot) - (ALL_LABELS as readonly string[]).indexOf(b.slot));
+      .sort((a, b) => slotLabelRank(a.slot) - slotLabelRank(b.slot));
     const total = Math.round(slots.filter((e) => !e.slot.startsWith('B') && !isILSlot(e.slot)).reduce((n, e) => n + (e.points ?? 0), 0) * 100) / 100;
     return c.json({
       season: s.year, date, today: leagueToday(), total, slots,
@@ -88,7 +89,7 @@ export function registerLineup(app: App) {
     const date = body.date ?? today;
     if (!isDate(date)) return c.json({ error: 'Bad date' }, 400);
     if (date < today) return c.json({ error: 'Past days can’t be edited' }, 400);
-    if (!(ALL_LABELS as readonly string[]).includes(body.toSlot)) return c.json({ error: 'Unknown slot' }, 400);
+    if (!allLabels((await loadRules(c.env)).ilSlots).includes(body.toSlot)) return c.json({ error: 'Unknown slot' }, 400);
 
     const entries = await lineupAt(c.env, s.year, teamId, date);
     const p = entries.find((e) => e.playerId === body.playerId);

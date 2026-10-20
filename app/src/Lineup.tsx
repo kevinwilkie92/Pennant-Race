@@ -1,5 +1,6 @@
 import { Pressable, View } from 'react-native';
-import { BENCH_SLOTS, HIT_SLOTS, IL_LABELS, PIT_SLOTS, ROSTER_LABELS, playerSubline } from '@pennant/domain';
+import { BENCH_SLOTS, HIT_SLOTS, PIT_SLOTS, ROSTER_LABELS, ilLabels, playerSubline } from '@pennant/domain';
+import { useTeams } from './teams';
 import type { LineupSlot, RosterSlot } from './api';
 import { fmtPts } from './useLeague';
 import { FONT, useTheme } from './theme';
@@ -61,14 +62,17 @@ function Section({ title, labels, by, showPoints, onPress, selected }: {
 export function Lineup<T extends Row>({ slots, showPoints = false, onPress, selected }: {
   slots: T[]; showPoints?: boolean; onPress?: (r: T) => void; selected?: number | null;
 }) {
+  const { rules } = useTeams();
   const by = new Map<string, Row>(slots.map((s) => [s.slot, s]));
+  // The league's IL slot count — or more, if an old roster has someone in a higher slot.
+  const ilCount = Math.max(rules.ilSlots, ...slots.map((s) => (/^IL(\d+)$/.exec(s.slot)?.[1] ? Number(/^IL(\d+)$/.exec(s.slot)![1]) : 0)));
   const p = { by, showPoints, onPress: onPress as ((r: Row) => void) | undefined, selected };
   return (
     <>
       <Section title="HITTERS" labels={HIT} {...p} />
       <Section title="PITCHERS" labels={PIT} {...p} />
       <Section title="BENCH" labels={BEN} {...p} />
-      {(onPress || slots.some((s) => s.slot.startsWith('IL'))) && <Section title="INJURED LIST" labels={IL_LABELS} {...p} />}
+      {(onPress || slots.some((s) => s.slot.startsWith('IL'))) && <Section title="INJURED LIST" labels={ilLabels(ilCount)} {...p} />}
     </>
   );
 }

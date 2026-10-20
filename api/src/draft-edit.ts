@@ -1,6 +1,7 @@
 import type { Hono } from 'hono';
 import { placePlayer, validateBid } from '@pennant/domain';
 import { requireAuth, requireCommissioner } from './auth';
+import { loadRules } from './league-settings';
 import { broadcast } from './realtime';
 import { loadRoster } from './roster';
 import type { AppVars, Env } from './types';
@@ -42,7 +43,7 @@ export function registerDraftEdit(app: App) {
     const price = b.price ?? t.sale.price;
     if (!(await c.env.DB.prepare('SELECT 1 FROM team WHERE id = ?').bind(teamId).first())) return c.json({ error: 'Unknown team' }, 400);
     const m = await money(c.env, yr, teamId, playerId);
-    const check = validateBid(price, m?.spent ?? 0, m?.filled ?? 0);
+    const check = validateBid(price, m?.spent ?? 0, m?.filled ?? 0, await loadRules(c.env));
     if (!check.ok) return c.json({ error: check.reason }, 400);
 
     const stmts: D1PreparedStatement[] = [];

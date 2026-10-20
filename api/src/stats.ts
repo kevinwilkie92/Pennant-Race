@@ -1,6 +1,7 @@
 import type { Hono } from 'hono';
 import { careerTotals, countQualityStarts, hittingSeason, pickSeasons, pitchingSeason, gameStat, isInjuredListCode, matchPlayers, normalizeName, roleOf, summarize, hitterEligibility, pitcherEligibility, type BoxBatting, type BoxPitching, type Role, type Split } from '@pennant/domain';
 import { requireAuth, requireCommissioner } from './auth';
+import { loadRules } from './league-settings';
 import { lineupAt } from './lineup';
 import { ownerMap } from './roster';
 import { leagueToday } from './time';
@@ -140,6 +141,7 @@ export async function syncDate(env: Env, date: string) {
     ours.set(p.mlbId, [...(ours.get(p.mlbId) ?? []), { id: p.id, role: roleOf(p) }]);
   }
 
+  const rules = await loadRules(env);
   let rows = 0;
   for (const g of todo) {
     const box = await mlb<Box>(env, `/game/${g.gamePk}/boxscore`);
@@ -147,7 +149,7 @@ export async function syncDate(env: Env, date: string) {
     for (const side of [box.teams.home, box.teams.away]) {
       for (const entry of Object.values(side.players)) {
         for (const mine of ours.get(entry.person.id) ?? []) {
-          const stat = gameStat(mine.role, entry);
+          const stat = gameStat(mine.role, entry, { hit: rules.hit, pit: rules.pit });
           if (!stat) continue;
           rows++;
           stmts.push(env.DB.prepare(
@@ -413,10 +415,11 @@ export async function playerCareer(env: Env, playerId: number): Promise<Career |
     const rows = pickSeasons(r.stats[0]?.splits ?? []);
     if (!rows.length) return empty('No major-league stats yet.');
     const teams = await mlbTeams(env, Number(leagueToday().slice(0, 4)));
+    const rules = await loadRules(env);
     const qs = role === 'P' ? await seasonQuality(env, p.mlbId, rows.map((x) => x.season)) : new Map<number, number>();
     const seasons: CareerSeason[] = rows.map((x) => ({
       season: x.season, teams: x.teamIds.map((id) => teams.get(id) ?? '?'),
-      ...(role === 'P' ? pitchingSeason(x.stat, qs.get(x.season) ?? 0) : hittingSeason(x.stat)),
+      ...(role === 'P' ? pitchingSeason(x.stat, qs.get(x.season) ?? 0, rules.pit) : hittingSeason(x.stat, rules.hit)),
     }));
     const out: Career = { available: true, role, seasons, totals: careerTotals(seasons), fetchedAt: Date.now() };
     await env.DB.prepare('INSERT INTO career_cache (mlb_id, role, json, fetched_at) VALUES (?, ?, ?, ?) ON CONFLICT(mlb_id, role) DO UPDATE SET json = excluded.json, fetched_at = excluded.fetched_at')

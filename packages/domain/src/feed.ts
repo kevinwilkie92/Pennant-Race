@@ -89,17 +89,18 @@ export function eligibilityPosition(abbr: string | undefined): string | null {
 }
 
 /** One player's scored game from his boxscore entry. `null` if he didn't play in his role. */
-export function gameStat(role: Role, entry: { stats?: { batting?: BoxBatting; pitching?: BoxPitching }; position?: { abbreviation?: string }; battingOrder?: string | number }): GameStat | null {
+export type Scoring = { hit?: Record<string, number>; pit?: Record<string, number> };
+export function gameStat(role: Role, entry: { stats?: { batting?: BoxBatting; pitching?: BoxPitching }; position?: { abbreviation?: string }; battingOrder?: string | number }, scoring: Scoring = {}): GameStat | null {
   if (role === 'H') {
     const line = hitterLine(entry.stats?.batting);
     if (!line) return null;
     const order = entry.battingOrder != null ? Number(entry.battingOrder) : NaN;
-    return { role, line, points: scoreHitter(line), started: Number.isFinite(order) && order % 100 === 0, pos: eligibilityPosition(entry.position?.abbreviation) ?? entry.position?.abbreviation ?? '' };
+    return { role, line, points: scoreHitter(line, scoring.hit), started: Number.isFinite(order) && order % 100 === 0, pos: eligibilityPosition(entry.position?.abbreviation) ?? entry.position?.abbreviation ?? '' };
   }
   const p = entry.stats?.pitching;
   const line = pitcherLine(p);
   if (!line) return null;
-  return { role, line, points: scorePitcher(line), started: n(p?.gamesStarted) > 0, pos: 'P' };
+  return { role, line, points: scorePitcher(line, scoring.pit), started: n(p?.gamesStarted) > 0, pos: 'P' };
 }
 
 /** Short human summary for game logs: "2-4, HR, 2 RBI" or "6.1 IP, 2 ER, 7 K, W". */

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import {
-  MAX_KEEPERS, assignSlots, keeperCost, keeperTier, maxBid, validateBid, ROSTER_SIZE, slotLabelRank,
+  assignSlots, keeperCost, keeperTier, maxBid, validateBid, ROSTER_SIZE, slotLabelRank,
 } from '@pennant/domain';
 import {
   bearer, createSession, destroySession, hashPassword, requireAuth, requireCommissioner, verifyPassword, userForToken,
@@ -12,7 +12,7 @@ import type { Nomination } from './draft-room';
 import { registerDraftEdit } from './draft-edit';
 import { registerLeague } from './league';
 import { registerPush } from './push';
-import { registerLeagueSettings, signupGate } from './league-settings';
+import { loadRules, registerLeagueSettings, signupGate } from './league-settings';
 import { registerSocial } from './social';
 import { registerStats, runFeed } from './stats';
 import { registerChat } from './chat';
@@ -126,11 +126,13 @@ async function draftState(env: Env, yr: number) {
       WHERE ds.season = ? ORDER BY ds.seq`,
   ).bind(yr).all();
   const hat = await (await room(env).fetch('https://room/hat')).json<{ mlbTeam: string | null }>();
+  const rules = await loadRules(env);
   return {
     season: yr,
+    rules: { budget: rules.budget, minBid: rules.minBid },
     hat: hat.mlbTeam,
     nomination: await currentNomination(env),
-    managers: money.map((m) => ({ ...m, remaining: 300 - m.spent, maxBid: maxBid(m.spent, m.filled), spots: ROSTER_SIZE - m.filled })),
+    managers: money.map((m) => ({ ...m, remaining: rules.budget - m.spent, maxBid: maxBid(m.spent, m.filled, rules.budget, ROSTER_SIZE, rules.minBid), spots: ROSTER_SIZE - m.filled })),
     sales,
   };
 }
@@ -172,7 +174,7 @@ app.post('/seasons/push', requireAuth, requireCommissioner, async (c) => {
     stmts.push(c.env.DB.prepare("UPDATE season SET status = 'archived' WHERE year = ?").bind(live));
   }
   stmts.push(c.env.DB.prepare("INSERT INTO season (year, status) VALUES (?, 'live')").bind(next));
-  stmts.push(c.env.DB.prepare('UPDATE team SET faab = 300'));                      // FAAB is $300 per season
+  stmts.push(c.env.DB.prepare('UPDATE team SET faab = ?').bind((await loadRules(c.env)).faabBudget));   // a fresh FAAB budget each season
   stmts.push(c.env.DB.prepare("UPDATE waiver_claim SET status = 'cancelled' WHERE status = 'pending'"));
   stmts.push(c.env.DB.prepare('INSERT OR IGNORE INTO player_position (player_id, season, position) SELECT player_id, ?, position FROM player_position WHERE season = ?').bind(next, latest.y));
   await c.env.DB.batch(stmts);
@@ -187,6 +189,7 @@ type Cand = {
 };
 
 async function keeperView(env: Env, yr: number) {
+  const rules = await loadRules(env);
   const status = await env.DB.prepare('SELECT status FROM season WHERE year = ?').bind(yr).first<{ status: string }>();
   const { results: kept } = await env.DB.prepare(
     `SELECT k.team_id AS teamId, k.player_id AS playerId, p.name, p.mlb_team AS mlbTeam, p.pos, k.year, k.cost
@@ -206,7 +209,7 @@ async function keeperView(env: Env, yr: number) {
            LEFT JOIN player_value pv ON pv.season = ?1 AND pv.player_id = p.id
           WHERE rs.season = ?2`,
       ).bind(yr, prior.y).all<Cand>();
-      candidates = results.map(mapCand);
+      candidates = results.map((r) => mapCand(r, rules));
     }
   }
   const keptIds = new Set(kept.map((k) => k.playerId));
@@ -214,18 +217,18 @@ async function keeperView(env: Env, yr: number) {
     ? !!(await env.DB.prepare('SELECT 1 FROM draft_sale WHERE season = ? AND is_keeper = 0 LIMIT 1').bind(yr).first())
     : true;
   return {
-    season: yr, status: status?.status ?? null, max: MAX_KEEPERS, locked: auction, kept,
+    season: yr, status: status?.status ?? null, max: rules.maxKeepers, locked: auction, kept,
     candidates: candidates.map((c) => ({ ...c, kept: keptIds.has(c.playerId) })),
   };
 }
 
 // Rollover rules live in @pennant/domain: Y2 -> not eligible, Y1 -> Year 2, everyone else -> Year 1.
-function mapCand(c: Cand) {
+function mapCand(c: Cand, rules: { keeperIncrease: number; minBid: number }) {
   const history = { yearsKept: (c.yearsKept ?? 0) as 0 | 1 | 2, lastPrice: c.lastPrice, avgSalary: c.avgSalary };
   return {
     teamId: c.teamId, playerId: c.playerId, name: c.name, mlbTeam: c.mlbTeam, pos: c.pos,
     positions: [c.pos, c.pos2].filter(Boolean) as string[],
-    tier: keeperTier(history), cost: keeperCost(history), lastPrice: c.lastPrice, avgSalary: c.avgSalary,
+    tier: keeperTier(history), cost: keeperCost(history, rules), lastPrice: c.lastPrice, avgSalary: c.avgSalary,
   };
 }
 
@@ -255,10 +258,11 @@ app.put('/keepers', requireAuth, async (c) => {
     if (cand.cost == null) return c.json({ error: 'Set the ESPN average salary first' }, 400);
     if (cand.kept) return c.json({ ok: true });
     const mine = view.kept.filter((k) => k.teamId === teamId).length;
-    if (mine >= MAX_KEEPERS) return c.json({ error: `At most ${MAX_KEEPERS} keepers per team` }, 400);
+    const rules = await loadRules(c.env);
+    if (mine >= rules.maxKeepers) return c.json({ error: `At most ${rules.maxKeepers} keepers per team` }, 400);
     const money = await c.env.DB.prepare('SELECT COALESCE(SUM(price), 0) AS spent, COUNT(*) AS filled FROM draft_sale WHERE season = ? AND team_id = ?')
       .bind(yr, teamId).first<{ spent: number; filled: number }>();
-    const check = validateBid(cand.cost, money?.spent ?? 0, money?.filled ?? 0);
+    const check = validateBid(cand.cost, money?.spent ?? 0, money?.filled ?? 0, rules);
     if (!check.ok) return c.json({ error: check.reason }, 400);
     const seq = ((await c.env.DB.prepare('SELECT COALESCE(MAX(seq), 0) AS s FROM draft_sale WHERE season = ?').bind(yr).first<{ s: number }>())?.s ?? 0) + 1;
     await c.env.DB.batch([
@@ -331,12 +335,14 @@ app.put('/draft/nomination', requireAuth, requireCommissioner, async (c) => {
     return c.json({ error: 'That player has already been drafted' }, 409);
   }
   const teamId = b.teamId ?? null, bid = b.bid ?? null;
-  if (bid !== null && (!Number.isInteger(bid) || bid < 1)) return c.json({ error: 'A bid is a whole number of at least $1' }, 400);
+  if (bid !== null && (!Number.isInteger(bid) || bid < 1)) return c.json({ error: 'A bid is a whole number of at least $1' }, 400);   // (the league's own minimum is checked when the sale is recorded)
   if (teamId !== null) {
     const money = await c.env.DB.prepare('SELECT COALESCE(SUM(price), 0) AS spent, COUNT(*) AS filled FROM draft_sale WHERE season = ? AND team_id = ?').bind(yr, teamId).first<{ spent: number; filled: number }>();
     if (!(await c.env.DB.prepare('SELECT 1 FROM team WHERE id = ?').bind(teamId).first())) return c.json({ error: 'Unknown team' }, 400);
     if ((money?.filled ?? 0) >= ROSTER_SIZE) return c.json({ error: 'That team’s roster is full' }, 400);
-    if (bid !== null && bid > maxBid(money?.spent ?? 0, money?.filled ?? 0)) return c.json({ error: `That team’s max bid is $${maxBid(money?.spent ?? 0, money?.filled ?? 0)}` }, 400);
+    const rules = await loadRules(c.env);
+    const cap = maxBid(money?.spent ?? 0, money?.filled ?? 0, rules.budget, ROSTER_SIZE, rules.minBid);
+    if (bid !== null && bid > cap) return c.json({ error: `That team’s max bid is $${cap}` }, 400);
   }
   const nomination: Nomination = { playerId: p.playerId, name: p.name, mlbTeam: p.mlbTeam, positions: p.positions, teamId, bid, at: Date.now() };
   await broadcast(c.env, { type: 'nomination', nomination });
@@ -356,7 +362,7 @@ app.post('/draft/sales', requireAuth, requireCommissioner, async (c) => {
   const money = await c.env.DB.prepare(
     'SELECT COALESCE(SUM(price), 0) AS spent, COUNT(*) AS filled FROM draft_sale WHERE season = ? AND team_id = ?',
   ).bind(yr, teamId).first<{ spent: number; filled: number }>();
-  const check = validateBid(price, money?.spent ?? 0, money?.filled ?? 0);
+  const check = validateBid(price, money?.spent ?? 0, money?.filled ?? 0, await loadRules(c.env));
   if (!check.ok) return c.json({ error: check.reason }, 400);
 
   const last = await c.env.DB.prepare('SELECT COALESCE(MAX(seq), 0) AS seq FROM draft_sale WHERE season = ?').bind(yr).first<{ seq: number }>();

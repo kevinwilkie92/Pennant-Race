@@ -3,12 +3,14 @@ import { Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { validateBid } from '@pennant/domain';
 import { api, type DraftManager, type DraftPlayer, type Team } from '../api';
 import { TeamAvatar } from '../TeamAvatar';
+import { useTeams } from '../teams';
 import { FONT } from '../theme';
 import { D } from './tokens';
 
 export function Award({ player, managers, teams, onClose, onDone }: {
   player: DraftPlayer; managers: DraftManager[]; teams: Team[]; onClose: () => void; onDone: () => void;
 }) {
+  const { rules } = useTeams();
   const [teamId, setTeamId] = useState<string | null>(null);
   const [bid, setBid] = useState('');
   const [err, setErr] = useState('');
@@ -30,7 +32,7 @@ export function Award({ player, managers, teams, onClose, onDone }: {
     const m = managers.find((x) => x.teamId === teamId);
     if (!m) return setErr('Choose the winning manager');
     const price = Number(bid);
-    const check = validateBid(price, m.spent, m.filled);
+    const check = validateBid(price, m.spent, m.filled, rules);
     if (!check.ok) return setErr(check.reason);
     setBusy(true); setErr('');
     try { await api.sell({ playerId: player.id, teamId: m.teamId, price }); onDone(); }

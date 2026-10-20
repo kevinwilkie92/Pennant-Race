@@ -28,6 +28,9 @@ export const ROSTER_LABELS = [
 export const MAX_IL = 4;
 export const IL_LABELS = ['IL1', 'IL2', 'IL3', 'IL4'] as const;
 export const ALL_LABELS = [...ROSTER_LABELS, ...IL_LABELS] as const;
+/** IL slot labels for a league that allows `n` of them (the default is MAX_IL). */
+export const ilLabels = (n: number = MAX_IL): string[] => Array.from({ length: n }, (_, i) => `IL${i + 1}`);
+export const allLabels = (n: number = MAX_IL): string[] => [...ROSTER_LABELS, ...ilLabels(n)];
 
 export type InjuryStatus = 'DTD' | 'IL' | 'OUT';
 export const INJURY_STATUSES: InjuryStatus[] = ['DTD', 'IL', 'OUT'];
@@ -39,23 +42,25 @@ export const countsAgainstRoster = (slot: string, status: string | null | undefi
 
 /** Display order: hitters (INF after SS), pitchers (SP then RP), bench, then the injured list. */
 export function slotLabelRank(label: string): number {
-  const i = (ALL_LABELS as readonly string[]).indexOf(label);
-  return i === -1 ? ALL_LABELS.length : i;
+  const i = (ROSTER_LABELS as readonly string[]).indexOf(label);
+  if (i !== -1) return i;
+  const il = /^IL(\d+)$/.exec(label);
+  return il ? ROSTER_LABELS.length + Number(il[1]) - 1 : ROSTER_LABELS.length + 100;
 }
 
 /** Max bid = remaining budget minus $1 held back for every other open spot. */
-export function maxBid(spent: number, filled: number, budget = BUDGET, rosterSize = ROSTER_SIZE): number {
+export function maxBid(spent: number, filled: number, budget = BUDGET, rosterSize = ROSTER_SIZE, minBid = MIN_BID): number {
   const spots = rosterSize - filled;
   if (spots <= 0) return 0;
-  return budget - spent - (spots - 1) * MIN_BID;
+  return budget - spent - (spots - 1) * minBid;
 }
 
 export type BidCheck = { ok: true } | { ok: false; reason: string };
 
-export function validateBid(price: number, spent: number, filled: number): BidCheck {
-  if (!Number.isInteger(price) || price < MIN_BID) return { ok: false, reason: `Bid must be a whole number of at least $${MIN_BID}` };
+export function validateBid(price: number, spent: number, filled: number, rules: { budget: number; minBid: number } = { budget: BUDGET, minBid: MIN_BID }): BidCheck {
+  if (!Number.isInteger(price) || price < rules.minBid) return { ok: false, reason: `Bid must be a whole number of at least $${rules.minBid}` };
   if (filled >= ROSTER_SIZE) return { ok: false, reason: 'Roster is full' };
-  const max = maxBid(spent, filled);
+  const max = maxBid(spent, filled, rules.budget, ROSTER_SIZE, rules.minBid);
   if (price > max) return { ok: false, reason: `Bid exceeds max bid of $${max}` };
   return { ok: true };
 }
@@ -76,10 +81,10 @@ export function keeperTier(h: KeeperHistory): 0 | 1 | 2 {
   return h.yearsKept === 0 ? 1 : h.yearsKept === 1 ? 2 : 0;
 }
 
-/** Year 1: last price + $5 (flat $5 if undrafted). Year 2: ESPN avg salary, rounded. Null if not eligible. */
-export function keeperCost(h: KeeperHistory): number | null {
+/** Year 1: last price + the keeper increase ($5 by default; flat increase if undrafted). Year 2: ESPN avg salary, rounded. Null if not eligible. */
+export function keeperCost(h: KeeperHistory, rules: { keeperIncrease: number; minBid: number } = { keeperIncrease: 5, minBid: MIN_BID }): number | null {
   const tier = keeperTier(h);
-  if (tier === 1) return h.lastPrice != null ? h.lastPrice + 5 : 5;
+  if (tier === 1) return Math.max(rules.minBid, h.lastPrice != null ? h.lastPrice + rules.keeperIncrease : rules.keeperIncrease);
   if (tier === 2) return h.avgSalary != null ? Math.round(h.avgSalary) : null;
   return null;
 }
@@ -89,8 +94,8 @@ export function rolloverBucket(currentKeeperYear: 0 | 1 | 2): 'year1' | 'year2' 
   return currentKeeperYear === 2 ? 'ineligible' : currentKeeperYear === 1 ? 'year2' : 'year1';
 }
 
-export function validateKeepers(count: number): BidCheck {
-  return count > MAX_KEEPERS ? { ok: false, reason: `At most ${MAX_KEEPERS} keepers per team` } : { ok: true };
+export function validateKeepers(count: number, max: number = MAX_KEEPERS): BidCheck {
+  return count > max ? { ok: false, reason: `At most ${max} keepers per team` } : { ok: true };
 }
 
 // ----------------------------------------------------------- scoring
@@ -248,3 +253,4 @@ export * from './feed';
 export * from './webpush';
 export * from './league';
 export * from './career';
+export * from './rules';

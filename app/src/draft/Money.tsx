@@ -1,11 +1,12 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { BUDGET } from '@pennant/domain';
+import { useTeams } from '../teams';
 import type { DraftManager, Team } from '../api';
 import { TeamAvatar } from '../TeamAvatar';
 import { FONT } from '../theme';
 import { D } from './tokens';
 
 export function Money({ managers, teams, onPick }: { managers: DraftManager[]; teams: Team[]; onPick: (id: string) => void }) {
+  const { rules } = useTeams();
   const byId = new Map(teams.map((t) => [t.id, t]));
   const order = [...managers].sort((a, b) => teams.findIndex((t) => t.id === a.teamId) - teams.findIndex((t) => t.id === b.teamId));
   return (
@@ -28,7 +29,7 @@ export function Money({ managers, teams, onPick }: { managers: DraftManager[]; t
                   <Text style={{ width: 46, textAlign: 'right', color: D.gold, fontFamily: FONT.num, fontSize: 17 }}>${m.maxBid}</Text>
                 </View>
                 <View style={{ height: 3, backgroundColor: 'rgba(255,255,255,0.08)', marginTop: 5 }}>
-                  <View style={{ height: 3, width: `${Math.max(0, Math.min(100, (m.remaining / BUDGET) * 100))}%`, backgroundColor: D.green }} />
+                  <View style={{ height: 3, width: `${Math.max(0, Math.min(100, (m.remaining / rules.budget) * 100))}%`, backgroundColor: D.green }} />
                 </View>
               </View>
             </Pressable>

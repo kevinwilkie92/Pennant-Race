@@ -22,25 +22,25 @@ export function pickSeasons(splits: Split[]): { season: number; stat: Raw; teamI
 }
 
 /** Counting stats we keep for each hitting season (plus the line scored with league rules). */
-export function hittingSeason(stat: Raw): { stats: Record<string, number>; points: number } {
+export function hittingSeason(stat: Raw, table?: Record<string, number>): { stats: Record<string, number>; points: number } {
   const ibb = num(stat.intentionalWalks);
   const stats = {
     g: num(stat.gamesPlayed), ab: num(stat.atBats), h: num(stat.hits), d: num(stat.doubles), t: num(stat.triples), hr: num(stat.homeRuns),
     r: num(stat.runs), rbi: num(stat.rbi), sb: num(stat.stolenBases), bb: num(stat.baseOnBalls), ibb, so: num(stat.strikeOuts),
   };
   const line: HitLine = { '1B': stats.h - stats.d - stats.t - stats.hr, '2B': stats.d, '3B': stats.t, HR: stats.hr, BB: stats.bb - ibb, IBB: ibb, R: stats.r, RBI: stats.rbi, SB: stats.sb, SO: stats.so };
-  return { stats, points: scoreHitter(line) };
+  return { stats, points: scoreHitter(line, table) };
 }
 
 /** Pitching season: `qs` is counted from the game log, because MLB's season totals don't include quality starts. */
-export function pitchingSeason(stat: Raw, qs: number): { stats: Record<string, number>; points: number } {
+export function pitchingSeason(stat: Raw, qs: number, table?: Record<string, number>): { stats: Record<string, number>; points: number } {
   const outs = Math.round(parseInnings(String(stat.inningsPitched ?? '0.0')) * 3);
   const stats = {
     g: num(stat.gamesPlayed), gs: num(stat.gamesStarted), outs, w: num(stat.wins), l: num(stat.losses), sv: num(stat.saves), hld: num(stat.holds),
     k: num(stat.strikeOuts), er: num(stat.earnedRuns), h: num(stat.hits), bb: num(stat.baseOnBalls), cg: num(stat.completeGames), sho: num(stat.shutouts), qs,
   };
   const line: PitLine = { IP: outs / 3, K: stats.k, W: stats.w, QS: qs, SV: stats.sv, HLD: stats.hld, CG: stats.cg, SHO: stats.sho, ER: stats.er, H: stats.h, BB: stats.bb };
-  return { stats, points: scorePitcher(line) };
+  return { stats, points: scorePitcher(line, table) };
 }
 
 /** Quality starts in a season's game log (6+ IP, 3 or fewer ER, as a starter). */

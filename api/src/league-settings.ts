@@ -1,5 +1,5 @@
 import type { Hono } from 'hono';
-import { checkCommissionerChange, cleanJoinCode, cleanLeagueName, generateJoinCode, joinCodeMatches } from '@pennant/domain';
+import { DEFAULT_RULES, HIT_LABELS, LIMITS, PIT_LABELS, ROSTER_SIZE, SCORE_MAX, SCORE_MIN, applyRulesPatch, checkCommissionerChange, cleanJoinCode, cleanLeagueName, describeRulesChange, generateJoinCode, joinCodeMatches, normalizeRules, scoringChanged, type LeagueRules } from '@pennant/domain';
 import { requireAuth, requireCommissioner } from './auth';
 import { broadcast } from './realtime';
 import type { AppVars, Env } from './types';
@@ -29,6 +29,43 @@ export async function signupGate(env: Env, givenCode: unknown): Promise<{ error:
   const { code } = await activeJoinCode(env);
   if (!joinCodeMatches(givenCode, code)) return { error: 'Invalid league join code', status: 403 };
   return null;
+}
+
+/** The league's editable rules (scoring, auction, keepers, FAAB, injured list), with defaults filling any gaps. */
+export async function loadRules(env: Env): Promise<LeagueRules> {
+  const row = await env.DB.prepare('SELECT scoring_json AS s FROM league WHERE id = 1').first<{ s: string }>();
+  try { return normalizeRules(JSON.parse(row?.s || '{}')); } catch { return normalizeRules({}); }
+}
+
+/** Would these rules break something already in progress? Returns the reason, or null if it is safe. */
+async function conflictWith(env: Env, next: LeagueRules): Promise<string | null> {
+  const live = (await env.DB.prepare("SELECT year FROM season WHERE status = 'live' ORDER BY year DESC LIMIT 1").first<{ year: number }>())?.year;
+  if (live != null) {
+    const { results } = await env.DB.prepare(
+      `SELECT t.name, COALESCE(SUM(ds.price), 0) AS spent, COUNT(ds.id) AS filled FROM team t LEFT JOIN draft_sale ds ON ds.team_id = t.id AND ds.season = ?1 GROUP BY t.id`,
+    ).bind(live).all<{ name: string; spent: number; filled: number }>();
+    for (const t of results) {
+      const spots = ROSTER_SIZE - t.filled;
+      if (spots <= 0 ? t.spent > next.budget : next.budget - t.spent - (spots - 1) * next.minBid < next.minBid) return `${t.name} has already spent too much to fit a $${next.budget} budget with a $${next.minBid} minimum bid`;
+    }
+    const over = await env.DB.prepare('SELECT t.name, COUNT(*) AS n FROM keeper k JOIN team t ON t.id = k.team_id WHERE k.season = ? GROUP BY k.team_id HAVING n > ? LIMIT 1').bind(live, next.maxKeepers).first<{ name: string; n: number }>();
+    if (over) return `${over.name} has already kept ${over.n} players, more than ${next.maxKeepers}`;
+  }
+  const il = await env.DB.prepare("SELECT slot FROM roster_slot WHERE slot GLOB 'IL[0-9]*' AND CAST(SUBSTR(slot, 3) AS INTEGER) > ? LIMIT 1").bind(next.ilSlots).first<{ slot: string }>();
+  if (il) return `A player is in ${il.slot}; move him out of the injured list before reducing it to ${next.ilSlots} slot${next.ilSlots === 1 ? '' : 's'}`;
+  return null;
+}
+
+/** Recomputes every stored game and daily total from the saved stat lines under the current scoring. */
+async function rescoreEverything(env: Env, rules: LeagueRules) {
+  const sum = (keys: string[]) => keys.map((k) => `COALESCE(json_extract(line_json, '$."${k}"'), 0) * ?`).join(' + ');
+  const hk = Object.keys(HIT_LABELS), pk = Object.keys(PIT_LABELS);
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE player_game SET points = ROUND(${sum(hk)}, 2) WHERE role = 'H'`).bind(...hk.map((k) => rules.hit[k as keyof typeof rules.hit])),
+    env.DB.prepare(`UPDATE player_game SET points = ROUND(${sum(pk)}, 2) WHERE role = 'P'`).bind(...pk.map((k) => rules.pit[k as keyof typeof rules.pit])),
+    env.DB.prepare('UPDATE daily_points SET points = COALESCE((SELECT ROUND(SUM(g.points), 2) FROM player_game g WHERE g.player_id = daily_points.player_id AND g.date = daily_points.date), points)'),
+    env.DB.prepare('DELETE FROM career_cache'),                         // careers are scored on the way in; they'll be recomputed on next view
+  ]);
 }
 
 async function audit(env: Env, team: string | null, action: string, detail: string) {
@@ -117,6 +154,32 @@ export function registerLeagueSettings(app: App) {
     await audit(c.env, c.get('user').teamId, 'join_code', `Join code reset to the server's by ${await teamName(c.env, c.get('user').teamId)}`);
     await broadcast(c.env, { type: 'league' });
     return c.json({ code: c.env.JOIN_CODE, source: 'server' });
+  });
+
+  // The rules a commissioner can tune. Anyone can read them (the app needs them for bids, budgets and lineups).
+  app.get('/league/rules', requireAuth, async (c) => c.json({ rules: await loadRules(c.env), defaults: DEFAULT_RULES, limits: LIMITS, scoreRange: [SCORE_MIN, SCORE_MAX] }));
+
+  app.put('/league/rules', requireAuth, requireCommissioner, async (c) => {
+    const me = c.get('user');
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const cur = await loadRules(c.env);
+    let patch: unknown = body;
+    if (body.reset === 'scoring') patch = { hit: DEFAULT_RULES.hit, pit: DEFAULT_RULES.pit };
+    else if (body.reset === 'all') patch = { ...DEFAULT_RULES };
+    const r = applyRulesPatch(cur, patch);
+    if (!r.ok) return c.json({ error: r.reason }, 400);
+    const changes = describeRulesChange(cur, r.rules);
+    if (!changes.length) return c.json({ rules: cur, changed: [], rescored: false });
+    const conflict = await conflictWith(c.env, r.rules);
+    if (conflict) return c.json({ error: conflict }, 409);
+
+    await c.env.DB.prepare('UPDATE league SET scoring_json = ? WHERE id = 1').bind(JSON.stringify(r.rules)).run();
+    const rescore = scoringChanged(cur, r.rules);
+    if (rescore) await rescoreEverything(c.env, r.rules);
+    const who = await teamName(c.env, me.teamId);
+    await audit(c.env, me.teamId, 'rules', `Rules changed by ${who}: ${changes.join('; ')}${rescore ? ' (all scores recalculated)' : ''}`.slice(0, 480));
+    await broadcast(c.env, { type: 'league' });
+    return c.json({ rules: r.rules, changed: changes, rescored: rescore });
   });
 
   app.put('/league/commissioners/:teamId', requireAuth, requireCommissioner, async (c) => {

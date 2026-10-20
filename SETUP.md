@@ -160,7 +160,7 @@ A person can have up to 10 devices; a device belongs to whoever signed in on it 
   The join code is shown to commissioners: make a fresh random one (like `K7MQ-X2PD`), type your own (6+ letters/numbers), or go back to the one the server was deployed with (`JOIN_CODE`). A code set in the app overrides the server's;
   the old code stops working at once; capitals, spaces and the hyphen are ignored. The code is stored in the league database, readable by commissioners, because it is an invitation, not a password.
 - **Waiver period**, **schedule** (create the season calendar and round robin from a Monday start date), **Run waivers now**, and a shortcut to the **MLB stats feed**.
-- **The rules** (roster size, $300 budget, 5 keepers, FAAB, scoring tables, playoff size) are displayed for reference but are built into the app and are not editable here; changing them means changing the code.
+- **League rules** (editable, commissioners only): see the next section.
 
 ## Career stats
 
@@ -170,6 +170,29 @@ The player card's **Career** tab lists every MLB season (regular season only) wi
 How it's computed: MLB's year-by-year totals, scored with the league rules. MLB's season totals don't include **quality starts**, so for pitchers the app counts them from each season's game log (one request per season, the first time a card is opened) and remembers finished seasons for good,
 so the +5 per quality start is exact. Each card's career is cached for 12 hours; if MLB can't be reached the last saved copy is shown with a note. Spot-checked against live data (for example Drew Rasmussen's 2026: 516 outs, 18 quality starts).
 This covers real MLB history, so it includes seasons from before your league existed, and it does not depend on the stats feed having been running.
+
+## League rules (editable)
+
+*League settings → League rules and Scoring.* Everyone can see them; commissioners can change them. Each number saves when you leave the box or tap − / +, and every change is recorded in *Recent changes* with the old and new value.
+
+| Rule | Default | Allowed | What it changes |
+|---|---|---|---|
+| Auction budget | $300 | $100–$1000 | each team's money, every max-bid calculation, the budget bars on the draft board and phones |
+| Minimum bid | $1 | $1–$10 | the smallest winning bid; max bid holds back this much per open spot |
+| Keepers per team | 5 | 0–10 | the keeper limit |
+| Keeper cost increase | $5 | $0–$20 | a Year-1 keeper costs last year's price plus this (a player nobody drafted costs this flat); Year 2 is still the ESPN average |
+| FAAB budget | $300 | $0–$1000 | what every team starts each **new** season with (applied when you push to the next season) |
+| Injured-list slots | 4 | 1–8 | how many IL spots each lineup has |
+| Scoring | see *Stats feed* | −50 to 50, up to 2 decimals per stat | points per stat for hitting (1B, 2B, 3B, HR, BB, IBB, R, RBI, SB, SO) and pitching (IP, K, W, QS, SV, HLD, CG, SHO, ER, H, BB) |
+
+**A scoring change recalculates everything.** Every saved game and every team's daily points, past weeks and past seasons included, is recomputed from the saved stat lines (a few seconds), so standings and matchup results
+can change retroactively; the screen asks you to confirm. Career stats are recomputed the next time a card is opened. *Reset to defaults* puts the scoring back to the original values (and recalculates again).
+
+**Protected against breaking a season in progress:** the app refuses a budget (or minimum bid) that a team has already spent past or can no longer afford a full roster under, a keeper limit below what a team already kept, an IL slot count that would remove a slot a player is sitting in,
+and a combination where a full 26-player roster at the minimum bid wouldn't fit in the budget. It tells you which team or slot is in the way. Changing the budget or keeper settings after the auction or keeper picks have started does not re-price what is already done:
+existing sales and chosen keepers keep their prices.
+
+**Still built in (not editable):** the roster layout (26 players: C, 1B, 2B, 3B, SS, IF, 4 OF, 2 Util, 4 SP, 4 RP, 6 bench), the 23-week round-robin season, and the top-6 playoff format. Those shape how lineups, schedules and the bracket work and would need code changes.
 
 ## Matchups, standings and playoffs
 
@@ -299,7 +322,7 @@ Tap the logo (⚙) on your My Team card → **Team settings**.
 ## Stats feed (MLB Stats API)
 
 Connected. The Worker pulls box scores from `statsapi.mlb.com` (free, no key) and scores them with the league rules:
-hitters `1B 1, 2B 2, 3B 3, HR 4, BB 1, IBB 1, R 1, RBI 1, SB 2, SO -1`; pitchers `IP 3, K 1, W 2, QS 5, SV 5, HLD 2, CG 3, SHO 3, ER -2, H -1, BB -1`.
+by default, hitters `1B 1, 2B 2, 3B 3, HR 4, BB 1, IBB 1, R 1, RBI 1, SB 2, SO -1`; pitchers `IP 3, K 1, W 2, QS 5, SV 5, HLD 2, CG 3, SHO 3, ER -2, H -1, BB -1`.
 (MLB's walk total includes intentional walks, so each walk is counted once. A quality start is 6+ IP and 3 or fewer ER.)
 
 **First-time setup, as commissioner** (Team settings → *MLB stats feed*):
@@ -329,7 +352,7 @@ Notes: *Trending* is "hottest this week" by points, not "most added". Postseason
 Built: shared rules + tests, D1 schema, seeded 2026 data, email/password auth with join code, roster / draft-state /
 commissioner sale + undo endpoints with server-side bid validation, live draft broadcast (Durable Object WebSocket),
 the TV draft board, the phone draft companion, the keepers picker + season push, the schedule / standings / matchup /
-bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, group chats, read receipts, message search, push notifications (see its section), league settings with multiple commissioners (see its section), replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, the live "on the block" nomination (the commissioner's DRAFT click puts the player, leader and bid on the TV board and every phone's NOW BIDDING strip; it clears on cancel, sale or a new hat draw, expires after 15 minutes, and late joiners get it on connect), the MLB stats feed (see its section), Google/Apple sign-in (see its section), archived-draft corrections (on a FINAL season's Draft Log the commissioner can change a price, change who drafted a player, or remove a sale; a team change also moves him on that team's frozen roster, the $300 budget and roster-room rules still apply, and keeper sales and players kept into a later season are locked), and the app's login, My Team, League, and theme switcher
+bracket engine and screens, lineup editing with daily history and first-pitch locks, the Players tab with FAAB waivers, trades, the waiver period, the injured list, player cards, league chat with direct messages, group chats, read receipts, message search, push notifications (see its section), league settings with multiple commissioners and editable rules (see their sections), replies, @mentions, images, edits and typing indicators, team logos (with a crop screen) and names, the live "on the block" nomination (the commissioner's DRAFT click puts the player, leader and bid on the TV board and every phone's NOW BIDDING strip; it clears on cancel, sale or a new hat draw, expires after 15 minutes, and late joiners get it on connect), the MLB stats feed (see its section), Google/Apple sign-in (see its section), archived-draft corrections (on a FINAL season's Draft Log the commissioner can change a price, change who drafted a player, or remove a sale; a team change also moves him on that team's frozen roster, the $300 budget and roster-room rules still apply, and keeper sales and players kept into a later season are locked), and the app's login, My Team, League, and theme switcher
 (dark/light/broadcast/network).
 
-Nothing is queued; the remaining ideas are 15/60-day IL types and making the fixed rules (budget, roster size, scoring) editable.
+Nothing is queued. Not built (and not asked for): the roster layout and season/playoff format are still fixed in code.

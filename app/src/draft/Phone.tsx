@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { BUDGET, ROSTER_LABELS, ROSTER_SIZE } from '@pennant/domain';
+import { ROSTER_LABELS, ROSTER_SIZE } from '@pennant/domain';
+import { useTeams } from '../teams';
 import type { DraftManager, DraftPlayer, DraftSale, MlbTeam, Nomination, Team } from '../api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TeamAvatar } from '../TeamAvatar';
@@ -24,6 +25,7 @@ const TABS: { key: Tab; label: string }[] = [
 const colorOf = (g: Group) => GROUPS.find((x) => x.key === g)!.color;
 
 export function Phone(p: PhoneProps) {
+  const { rules } = useTeams();
   const { t } = useTheme();
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>('board');
@@ -193,7 +195,7 @@ export function Phone(p: PhoneProps) {
                     <Text numberOfLines={1} style={{ color: t.text, fontFamily: FONT.bodySemi, fontSize: 12.5 }}>{tm.name}</Text>
                     <Text style={{ color: t.dim2, fontFamily: FONT.body, fontSize: 10 }}>{tm.owner}</Text>
                   </View>
-                  <Text style={[s.num, { width: 56, color: t.green }]}>${m?.remaining ?? BUDGET}</Text>
+                  <Text style={[s.num, { width: 56, color: t.green }]}>${m?.remaining ?? rules.budget}</Text>
                   <Text style={[s.num, { width: 52, color: t.gold }]}>${m?.maxBid ?? 0}</Text>
                   <Text style={[s.num, { width: 48, color: t.text }]}>{m?.spots ?? ROSTER_SIZE}</Text>
                 </Pressable>

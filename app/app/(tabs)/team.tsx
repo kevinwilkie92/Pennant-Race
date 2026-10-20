@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
-import { ALL_LABELS, canFillSlot, canUseIL, isILSlot } from '@pennant/domain';
+import { allLabels, canFillSlot, canUseIL, isILSlot } from '@pennant/domain';
 import { PlayerCard } from '../../src/PlayerCard';
 import { api, type LineupSlot } from '../../src/api';
 import { useAuth } from '../../src/auth';
@@ -9,6 +9,7 @@ import { TradeComposer } from '../../src/TradeComposer';
 import { TeamAvatar } from '../../src/TeamAvatar';
 import { Transactions } from '../../src/Transactions';
 import { useRouter } from 'expo-router';
+import { useTeams } from '../../src/teams';
 import { useLeague } from '../../src/useLeague';
 import { fmtPts } from '../../src/useLeague';
 import { FONT, useTheme } from '../../src/theme';
@@ -29,6 +30,7 @@ export default function MyTeam() {
   const [cardId, setCardId] = useState<number | null>(null);
   const router = useRouter();
   const lg = useLeague();
+  const { rules } = useTeams();
 
   const load = useCallback(() => {
     if (!team) return;
@@ -146,7 +148,7 @@ export default function MyTeam() {
                   <Body style={{ padding: 16, color: t.loss }}>🔒 His game has started, so he's locked for today.</Body>
                 ) : (
                   <ScrollView>
-                    {ALL_LABELS.filter((l) => l !== sel.slot && canFillSlot(l, sel.positions) && (!isILSlot(l) || canUseIL(sel.injury))).map((label) => {
+                    {allLabels(rules.ilSlots).filter((l) => l !== sel.slot && canFillSlot(l, sel.positions) && (!isILSlot(l) || canUseIL(sel.injury))).map((label) => {
                       const occ = data.slots.find((s) => s.slot === label);
                       const blocked = !!occ?.locked || (!!occ && !canFillSlot(sel.slot, occ.positions)) || (!!occ && isILSlot(sel.slot) && !canUseIL(occ.injury));
                       return (

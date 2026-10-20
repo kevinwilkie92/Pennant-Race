@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { BUDGET, ROSTER_LABELS, ROSTER_SIZE } from '@pennant/domain';
+import { ROSTER_LABELS, ROSTER_SIZE } from '@pennant/domain';
+import { useTeams } from '../teams';
 import { api, type DraftManager, type DraftPlayer, type DraftSale, type Team } from '../api';
 import { TeamAvatar } from '../TeamAvatar';
 import { FONT } from '../theme';
@@ -11,6 +12,7 @@ export function Rosters({ teams, managers, roster, highlight }: {
   teams: Team[]; managers: DraftManager[];
   roster: Map<string, { sale: DraftSale; label: string }[]>; highlight: string | null;
 }) {
+  const { rules } = useTeams();
   const mg = new Map(managers.map((m) => [m.teamId, m]));
   return (
     <ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, padding: 18 }}>
@@ -26,7 +28,7 @@ export function Rosters({ teams, managers, roster, highlight }: {
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 }}>
                 <Text style={{ color: D.green, fontFamily: FONT.bodyBold, fontSize: 11 }}>Max ${m?.maxBid ?? 0}</Text>
-                <Text style={{ color: D.dim, fontFamily: FONT.bodyBold, fontSize: 11 }}>${m?.remaining ?? BUDGET} left</Text>
+                <Text style={{ color: D.dim, fontFamily: FONT.bodyBold, fontSize: 11 }}>${m?.remaining ?? rules.budget} left</Text>
                 <Text style={{ color: D.dim, fontFamily: FONT.bodyBold, fontSize: 11 }}>{m?.filled ?? 0}/{ROSTER_SIZE}</Text>
               </View>
             </View>
